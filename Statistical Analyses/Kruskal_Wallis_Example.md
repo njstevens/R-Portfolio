@@ -14,14 +14,10 @@ output:
  }
 </script>
 
-```{r, include=FALSE}
-library(mosaic)
-library(car)
-library(DT)
-library(pander)
-```
 
-```{r, eval=FALSE}
+
+
+```r
 #Play the above chunk and this one in your Console to access the data
 View(Baumann)
 ?Baumann
@@ -95,9 +91,8 @@ H_a: \text{At least one samples distribution is stochastically different.}
 $$ 
 
 
-```{r,echo=FALSE}
-datatable(Baumann,options=list(lengthMenu = c(3,10,30)))
-```
+<!--html_preserve--><div id="htmlwidget-1c37d92d45eb2b99785e" style="width:100%;height:auto;" class="datatables html-widget"></div>
+<script type="application/json" data-for="htmlwidget-1c37d92d45eb2b99785e">{"x":{"filter":"none","data":[["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56","57","58","59","60","61","62","63","64","65","66"],["Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","Basal","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","DRTA","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat","Strat"],[4,6,9,12,16,15,14,12,12,8,13,9,12,12,12,10,8,12,11,8,7,9,7,7,12,10,16,15,9,8,13,12,7,6,8,9,9,8,9,13,10,8,8,10,11,7,4,7,7,6,11,14,13,9,12,13,4,13,6,12,6,11,14,8,5,8],[3,5,4,6,5,13,8,7,3,8,7,2,5,2,2,10,5,5,3,4,3,6,2,6,4,1,8,7,6,7,7,8,6,2,4,6,4,4,5,6,2,6,5,6,7,6,6,2,6,5,5,6,6,5,3,9,6,8,4,3,6,4,4,2,3,3],[5,9,5,8,10,9,12,5,8,7,12,4,4,8,6,9,3,5,4,2,5,7,7,5,13,5,14,14,10,13,12,11,8,7,10,8,8,10,12,10,11,7,8,12,11,4,4,4,3,8,12,14,12,7,5,9,1,13,7,5,7,11,15,9,6,4],[4,5,3,5,9,8,5,5,7,7,4,4,6,8,4,10,3,5,5,3,4,8,6,6,3,7,7,6,9,5,7,6,5,0,6,6,7,11,6,6,6,8,8,6,12,8,10,4,9,5,8,12,11,11,10,9,10,1,9,13,9,7,7,5,8,6],[41,41,43,46,46,45,45,32,33,39,42,45,39,44,36,49,40,35,36,40,54,32,31,40,48,30,42,48,49,53,48,43,55,55,57,53,37,50,54,41,49,47,49,49,53,47,41,49,43,45,50,48,49,42,38,42,34,48,51,33,44,48,49,33,45,42]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th> <\/th>\n      <th>group<\/th>\n      <th>pretest.1<\/th>\n      <th>pretest.2<\/th>\n      <th>post.test.1<\/th>\n      <th>post.test.2<\/th>\n      <th>post.test.3<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"lengthMenu":[3,10,30],"columnDefs":[{"className":"dt-right","targets":[2,3,4,5,6]},{"orderable":false,"targets":0}],"order":[],"autoWidth":false,"orderClasses":false}},"evals":[],"jsHooks":[]}</script><!--/html_preserve-->
 
 ### Analysis
 
@@ -107,9 +102,14 @@ datatable(Baumann,options=list(lengthMenu = c(3,10,30)))
 
 To determine if there is sufficient enough evidence to reject the null hypothesis, a Kruskal-Wallis Rank Sum test was run on the "post.test.3" and "group" variables, with an $\alpha$ = 0.05 level of significance.  The following results were obtained.
 
-```{r, echo=FALSE, comment = NA, warning=FALSE}
-pander(kruskal.test(post.test.3 ~ group, data=Baumann), caption="Kruskal-Wallis Rank Sum Test")
-```
+
+----------------------------------
+ Test statistic   df    P value   
+---------------- ---- ------------
+     9.632        2    0.0081 * * 
+----------------------------------
+
+Table: Kruskal-Wallis Rank Sum Test
 
 The table above shows that a p value of 0.0081 was obtained from the test, which is very significant.  Thus there is sufficient evidence to reject the null hypothesis and accept the alternative, which means that at least one of the sample distributions is stochastically different.
 
@@ -117,15 +117,18 @@ The table above shows that a p value of 0.0081 was obtained from the test, which
 
 Because there was sufficient evidence to reject the null hypothesis, the boxplot and numerical summary below can be trusted.  
 
-```{r, echo=FALSE}
-boxplot(post.test.3 ~ group, data = Baumann, main = "Reading Comprehension of Students", ylab="Student Score", xlab="Instructional Methods",col= c("firebrick3", "darkmagenta","green2"))
+![](Kruskal_Wallis_Example_files/figure-html/unnamed-chunk-5-1.png)<!-- -->
 
-```
 
-```{r, echo=FALSE}
-pander(favstats(post.test.3 ~ group, data=Baumann))
+---------------------------------------------------------------------------
+ group   min    Q1     median    Q3     max   mean     sd     n    missing 
+------- ----- ------- -------- ------- ----- ------- ------- ---- ---------
+ Basal   32    36.75     41      45     54    41.05   5.636   22      0    
 
-```
+ DRTA    30    42.25    48.5    52.25   57    46.73   7.388   22      0    
+
+ Strat   33     42       45     48.75   53    44.27   5.767   22      0    
+---------------------------------------------------------------------------
 
 Both the box plot and numerical summary show that there is a difference in means and medians of student scores between all of the groups, and that one experimental method was more effective than the others.
 </div>

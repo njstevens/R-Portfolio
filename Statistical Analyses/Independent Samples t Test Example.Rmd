@@ -4,6 +4,7 @@ output:
   html_document:
     theme: cerulean
     code_folding: hide
+    keep_md: TRUE
 ---
 
 ```{r, include=FALSE}

@@ -6,10 +6,7 @@ output:
     code_folding: hide
     keep_md: TRUE
 ---
-```{r, include=FALSE}
-library(mosaic)
-library(pander)
-```
+
 
 #### Background
 
@@ -30,7 +27,8 @@ The question that this analysis will face is, "Is there any kind of statistical 
 
 </div>
 
-```{r}
+
+```r
 discrim <- matrix(c(89,79,297,118,130,350,241,140,248,37,59,197), ncol = 3, byrow = T)
 colnames(discrim) <- c("Agree","Undecided","Disagree")
 rownames(discrim) <- c("East","Midwest","South","West")
@@ -53,37 +51,54 @@ $$
 
 
 To get a visual understanding of the data, the following bar plot shows.
-```{r, echo=FALSE}
-barplot(discrim, beside=TRUE, legend=TRUE, xlab="Opinion", main="Opinions on Discrimination by Region", col=c("green1", "firebrick","skyblue","gold"),xlim=c(0,20) )
-
-```
+![](Chi_Squared_Example_files/figure-html/unnamed-chunk-3-1.png)<!-- -->
 
 
 The following Chi Squared table tests the variables for independence. An $\alpha = 0.05$ was used as the standard of significance for this test.
 
-```{r, echo=FALSE, warning=FALSE, comment=NA}
-chi.discrim<-chisq.test(discrim)
-pander(chi.discrim)
-```
+
+---------------------------------------
+ Test statistic   df       P value     
+---------------- ---- -----------------
+      125         6    1.476e-24 * * * 
+---------------------------------------
+
+Table: Pearson's Chi-squared test: `discrim`
 
 Since the p-value is far below the standard of significance, it can be concluded that there is sufficient evidence to reject the null hypothesis and accept the alternative hypothesis.  Thus the Region and Opinions are assosciated with each other.
 
 However, the appropriateness must be checked and the expected counts must be more than 5:
-```{r, echo=FALSE, warning=FALSE, comment=NA}
-pander(chi.discrim$expected)
-```
+
+--------------------------------------------
+   &nbsp;      Agree   Undecided   Disagree 
+------------- ------- ----------- ----------
+  **East**     113.6     95.58      255.8   
+
+ **Midwest**   146.1     122.9       329    
+
+  **South**    153.7     129.3       346    
+
+  **West**     71.59     60.22      161.2   
+--------------------------------------------
 Seeing that the expected counts are more than 5, the Chi Squarred test is an appropriate test to run for this data.
 
 To get a clearer understanding of what knowledge is useful, the Pearson Residuals can be used to assess what elements had the most drastic change.  The Pearson Residuals are as follows.
 
-```{r, echo=FALSE, comment=NA, warning=FALSE}
-pander(chi.discrim$residuals)
-```
+
+---------------------------------------------
+   &nbsp;      Agree    Undecided   Disagree 
+------------- -------- ----------- ----------
+  **East**     -2.309    -1.696      2.575   
+
+ **Midwest**   -2.326    0.6392      1.159   
+
+  **South**    7.043     0.9423      -5.27   
+
+  **West**     -4.088    -0.1577     2.821   
+---------------------------------------------
 The residuals can also be plotted in the bar plot to give a visual on the most drastic changes. 
 
-```{r, echo=FALSE}
-barplot(chi.discrim$residuals, beside=TRUE, legend=TRUE, xlab="Opinion", main="Residuals of the Opinions on Discrimination by Region", col=c("green1", "firebrick","skyblue","gold"),xlim=c(0,20))
-```
+![](Chi_Squared_Example_files/figure-html/unnamed-chunk-7-1.png)<!-- -->
 
 The most drastic changes from the expected counts appear to be within the South disagreeing with discrimination, as well as the south aggreeing with discrimination. The south showed that a lower amount of people actually disagreed with discrimination than was expected, and a lot more people agreed with discrimination than was expected.  However, what can also be pointed out is that a lower amount of people in the West agreed with discrimination than what was expected.  
 
