@@ -1,0 +1,136 @@
+---
+title: "Reading Comprehension"
+output: 
+  html_document:
+    theme: cerulean
+    code_folding: hide
+---
+
+<script type="text/javascript">
+ function showhide(id) {
+    var e = document.getElementById(id);
+    e.style.display = (e.style.display == 'block') ? 'none' : 'block';
+ }
+</script>
+
+```{r, include=FALSE}
+library(mosaic)
+library(car)
+library(DT)
+library(pander)
+```
+
+```{r, eval=FALSE}
+#Play the above chunk and this one in your Console to access the data
+View(Baumann)
+?Baumann
+```
+
+### Background
+
+"This study investigated the effectiveness of explicit instruction in 'think aloud' as a means to promote elementary students' comprehension monitoring abilities" [(Baumann & Jones, 1992)](http://jlr.sagepub.com/content/24/2/143.full.pdf).
+
+
+<a href="javascript:showhide('abstract')">Details of the Study<span style="font-size:8pt;">&nbsp;(click to view)</span></a>
+
+<div id="abstract" style="display:none;">
+
+The following explanation of the experiment comes directly from the original research article [(Baumann & Jones, 1992)](http://jlr.sagepub.com/content/24/2/143.full.pdf).
+
+<div style="padding-left:30px; padding-right:30px;">
+
+Fourth-grade students from an elementary school in a rural midwestern community participated in the study. The school had adopted a team teaching plan, and three fourth-grade teachers shared an open classroom area. The teachers grouped the students for reading instruction across the three classes according to reading ability. One teacher each worked with a high [ability reading group], [one teacher worked with a] middle [ability group], and [the other teacher worked with the] low reading [ability] group. All groups used basal reading materials and were formed at the beginning of the school year on the basis of standardized achievement test data, prior performance in the basal reading program, and teacher judgment.
+
+Sixty-eight of the 72 students in the fourth-grade team participated in the study; the four nonparticipating students were mainstreamed special education students for whom the instructional materials were considered to be too frustrating to read. The 68 students were assigned randomly to one of the three experimental groups (Strat = 23 students; DRTA = 23 students; Basal = 22 students). Because of illness and transfer to another school, incomplete data were obtained for one subject each from the Strat and DRTA groups. Thus, the final sample consisted of 66 students, 32 girls and 34 boys.
+
+Posttests 1-3 were group-administered, quantitative measures obtained
+for all students in the sample. Posttest 1 was an error detection test. Posttest 2 was a comprehension monitoring questionnaire. Posttest 3 was a modified cloze test. To statistically account for students'
+preexperimental differences in comprehension monitoring abilities, two pretests were constructed, administered, and used as covariates in data analyses for Posttests 1-3.
+
+Pretest 1. The first pretest involved an error detection task designed to evaluate students' preintervention ability to monitor their comprehension.... Students were provided the following directions which were printed on the pretest and read aloud by the experimenter: 'Read the story carefully. Try to understand it as you read. There will be 16 sentences that do not belong in the story. Look for them as you read. Ask yourself, "What does not make sense in this story?" Underline the 16 sentences that do not make sense. Check your work when you are finished. If you cannot read a
+word, raise your hand, and we will help you.' Preceding Pretest 1, students were given a brief practice exercise that required them to identify obvious intruded sentences in two short texts. Pretest 1 was scored by calculating the number of correctly identified intruded sentences.
+
+Pretest 2. The second pretest queried students about the strategies they believed to be useful in promoting their understanding of stories. In this pretest, modeled after an instrument developed by Schmitt (1988, 1990), the students were presented with 15 multiple-choice items like the following:
+
+<div style="padding-left:15px;">
+When I read, it is a good idea to:
+
+A. sound out words I don't know.
+
+B. make some guesses about what will happen in the story.
+
+C. make a list of all the details in the story.
+
+D. look up new words in the dictionary.
+
+</div>
+
+Posttest 1: Error detection test. Posttest 1 was the same in form as Pretest 1: with 16 intruded sentences lexically consistent at a local level but semantically inconsistent at a global level. 
+
+Posttest 2: Comprehension monitoring questionnaire. Posttest 2, consisting of 18 items, was a slightly expanded version of Pretest 2. 
+
+Posttest 3: Degrees of Reading Power. The Degrees of Reading Power (DRP)
+(1986) is a standardized, commercially produced instrument that employs a modified cloze format (words are deleted from a selection and for each omission the student selects the most appropriate word from a list of five). According to the authors, DRP tests "are holistic measures of how well the messages within text are understood. . . . DRP tests focus measurement on determining how well students process or construct meaning from paragraphs as they read through a selection" (DRP Handbook, 1986, p. 1). Thus, the DRP, at one level, is a general reading comprehension assessment tool.
+
+</div>
+
+The data for this study are contained in the `Baumann` dataset.
+
+</div>
+
+In short, this study was done to see if there are better methods out there for helping students reading comprehension.  This is important because if the education system can find better methods of improving reading comprehension, then they will help students be better prepared for higher education.  The study compared the traditional teaching method with two other innovative methods to see if there was any difference in reading comprehension scores in a set of different tests.
+
+### Data and Hypothesis
+
+
+With the given data from the research study below, it was determined that the most accurate results could be obtained by running a Kruskal-Wallis test on Post Test 3, since it was a comprehensive test at the end of the year as well as a widely recognized test.  Thus the null hypothesis for this test is that all groups are from the same distribution, and the alternative is that at least one group's distribution is stochastically different than the others.
+
+$$
+H_o: \text{All samples are from the same distribution.}
+$$
+
+$$
+H_a: \text{At least one samples distribution is stochastically different.}  
+$$ 
+
+
+```{r,echo=FALSE}
+datatable(Baumann,options=list(lengthMenu = c(3,10,30)))
+```
+
+### Analysis
+
+# {.tabset .tabset-pills .tabset-fade}
+
+##Kruskal-Wallis Test
+
+To determine if there is sufficient enough evidence to reject the null hypothesis, a Kruskal-Wallis Rank Sum test was run on the "post.test.3" and "group" variables, with an $\alpha$ = 0.05 level of significance.  The following results were obtained.
+
+```{r, echo=FALSE, comment = NA, warning=FALSE}
+pander(kruskal.test(post.test.3 ~ group, data=Baumann), caption="Kruskal-Wallis Rank Sum Test")
+```
+
+The table above shows that a p value of 0.0081 was obtained from the test, which is very significant.  Thus there is sufficient evidence to reject the null hypothesis and accept the alternative, which means that at least one of the sample distributions is stochastically different.
+
+##Graphical and Numerical Summaries
+
+Because there was sufficient evidence to reject the null hypothesis, the boxplot and numerical summary below can be trusted.  
+
+```{r, echo=FALSE}
+boxplot(post.test.3 ~ group, data = Baumann, main = "Reading Comprehension of Students", ylab="Student Score", xlab="Instructional Methods",col= c("firebrick3", "darkmagenta","green2"))
+
+```
+
+```{r, echo=FALSE}
+pander(favstats(post.test.3 ~ group, data=Baumann))
+
+```
+
+Both the box plot and numerical summary show that there is a difference in means and medians of student scores between all of the groups, and that one experimental method was more effective than the others.
+</div>
+
+
+### Interpretation
+
+The obvious front runner amongst the experimental groups is the DRTA group.  This group had a significantly higher median score of 48.8 and also a higher mean score of 46.73. This means that the best method for helping students with reading comprehension was used in the DRTA experimental group.  However, due to lack of description as to what each experimental method entailed, all that can be said is that the DRTA or one of the "innovative" experimental methods showed significant superiority over the Basal ("traditional method"") and the Strat (other "innovative" method) groups.
+

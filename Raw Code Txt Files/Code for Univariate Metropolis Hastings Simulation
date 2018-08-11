@@ -1,0 +1,57 @@
+### Metropolis Hastings Simulation
+
+n<-30000
+t<-rep(0,n)
+t[1]<-5
+sigma<-2
+keep<-rep(0,n)
+u<-rep(0,n)
+xi<-c(62.1, 17.1, 33.6, 21.8, 67.7, 56.9, 75.4, 43.9, 83.8, 46.9, 14.6,103.1)
+
+for(i in 2:n){
+  
+  tp<-rnorm(1,t[i-1],sigma) # candidate value
+  
+  # posterior evaluated at current value, pi(x_1)
+  pcur<-dgamma()
+  
+  #posterior evaluated at candidate value, pi(x_i)
+  pcan<-ft(tp)
+  
+  #Probability of accepting candidate value
+  keep[i]<-min(1,pcan/pcur)
+  
+  #Uniform random value
+  u[i]<- runif(1,0,1)
+
+  
+  if (u[i]<keep[i]) {
+    t[i] <- tp  # Current value of x_i
+  } else {
+    t[i] <- t[i-1]
+  }
+  
+
+}
+hist(x, col="grey")
+
+summary(x)
+### Using the Bolstad2 function normMixMH given a target density of
+
+theta0<-c(0,1)
+theta1<-c(3,2)
+p<-0.7
+candidate<-c(0,0.5)
+
+## Simulation:
+normMixMH(theta0,theta1,p, candidate,type="rw",steps=50000)
+
+
+## To simulate using Bivariate data
+
+bivnormRW<-bivnormMH(0.3, steps=50000, type="rw")$targetSample
+summary(bivnormRW) #5 number summaries of x and y
+cov(bivnormRW) #covariance matrix
+
+# plot of last 1000 observations
+plot(y[49000:50000]~x[49000:50000], type='l',bivnormRW, main="Random Walk")

@@ -1,0 +1,43 @@
+# Make observation
+
+```{r}
+obs <- c(6,9,16,10,11,12,7,7,9,11,9,15)
+n <- length(obs)
+
+```
+
+
+# Number of Boot Strap resamples
+
+```{r}
+nboot<-50000
+```
+
+#Initialize vector sample means
+
+```{r}
+Q3<-rep(0,nboot)
+Q1<-rep(0,nboot)
+iqr<-rep(0,nboot)
+```
+
+# Calculate Boot Strap means
+
+```{r}
+
+for(i in 1:nboot){
+  
+  x = sample(obs, n, replace=T);
+  Q3[i]<-quantile(x,0.75)
+  Q1[i]<-quantile(x,0.25)
+iqr[i]<-Q3[i]-Q1[i]
+}
+``` 
+
+
+# Find the 2.5th and 97.5th percentiles
+
+```{r}
+quantile(iqr, c(0.025,0.975))
+```
+
