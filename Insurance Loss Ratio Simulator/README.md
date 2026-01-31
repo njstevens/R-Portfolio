@@ -50,11 +50,11 @@ Output:
 Implements the statistical and visualization logic used in the app.
 
 **Key functions:**
-- **`trust.LossesAssesment()`** — computes claim frequency and severity by deductible and produces interactive Dygraphs.  
-- **`trust.simLosses()`** — simulates annual loss experience using a Poisson (frequency) and Exponential (severity) model with configurable deductibles and loss adjustments.  
-- **`trust.200Scenarios()`** — runs 200 Monte Carlo simulations of loss ratios under multiple pricing strategies to visualize expected performance ranges.  
-- **`trust.GenSimPlot()`** — generates interactive time-series Dygraphs of simulated loss-ratio trajectories.  
-- **`trust.SimLossIQ()`** — quick diagnostic simulation of expected incurred losses under given deductibles.
+- **`LossesAssesment()`** — computes claim frequency and severity by deductible and produces interactive Dygraphs.  
+- **`simLosses()`** — simulates annual loss experience using a Poisson (frequency) and Exponential (severity) model with configurable deductibles and loss adjustments.  
+- **`run_200Scenarios()`** — runs run_200 Monte Carlo simulations of loss ratios under multiple pricing strategies to visualize expected performance ranges.  
+- **`GenSimPlot()`** — generates interactive time-series Dygraphs of simulated loss-ratio trajectories.  
+- **`SimLossIQ()`** — quick diagnostic simulation of expected incurred losses under given deductibles.
 
 ---
 
@@ -75,8 +75,8 @@ Defines the **user interface and server logic** for the Shiny dashboard.
 
 **Server logic**
 - Dynamically calls the functions above to compute and render:
-  - Frequency and severity Dygraphs (`trust.LossesAssesment`)  
-  - Multi-scenario loss-ratio simulations (`trust.200Scenarios`, `trust.GenSimPlot`)  
+  - Frequency and severity Dygraphs (`LossesAssesment`)  
+  - Multi-scenario loss-ratio simulations (`run_200Scenarios`, `GenSimPlot`)  
 
 **Path handling**
 - Automatically sets the working directory to the script location so the app runs correctly for anyone cloning the repo.
@@ -100,7 +100,7 @@ Defines the **user interface and server logic** for the Shiny dashboard.
    or simply click **“Run App”** in RStudio.
 
 4. The app will automatically:
-   - Generate synthetic data (`trustdata`, `ecarm`)  
+   - Generate synthetic data (`premium_data`, `loss_data`)  
    - Load all loss simulation functions  
    - Launch an interactive dashboard
 
@@ -128,7 +128,7 @@ Defines the **user interface and server logic** for the Shiny dashboard.
 
 ## 🧠 Notes
 
-- Default data are simulated; replace `trustdata` and `ecarm` with real datasets as needed.  
+- Default data are simulated; replace `premium_data` and `loss_data` with real datasets as needed.  
 - All paths are relative — anyone cloning this repo can run it without modification.  
 - To deploy on [shinyapps.io](https://www.shinyapps.io) or [Posit Connect](https://posit.co/products/connect/), simply upload all three `.R` files together.
 
