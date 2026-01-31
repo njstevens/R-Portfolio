@@ -9,11 +9,11 @@ library(janitor)
 library(EnvStats)
 library(scico)
 
-trustColors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","#6600FF","#FFCC00","#000033")
+sim_colors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","#6600FF","#FFCC00","#000033")
 ###########################################################################
 ### Generate Plot of Incurred Loss Dollars given different deductibles ###
 ##########################################################################
-# Import data from eCarma.  Ensure ULGTACCT Code, ULGTACCT, Accident Date, Policy Effective Date and Incurred Dollars are present.  This is also used in the simulation process functions below.set.seed(123)
+# Import data from loss_dat.  Ensure ULGTACCT Code, ULGTACCT, Accident Date, Policy Effective Date and Incurred Dollars are present.  This is also used in the simulation process functions below.set.seed(123)
 
 
 
@@ -22,7 +22,7 @@ trustColors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","
 # 
 # n_members <- 10
 # 
-# trustdata <- tibble(
+# prem_dat <- tibble(
 #   member_number = 1001:(1000 + n_members),
 #   product = "Liability",
 #   five_year_earned_premium = round(runif(n_members, 2e6, 5e6),0),
@@ -44,8 +44,8 @@ trustColors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","
 # member_ids <- sample(trustData$member_number, n_claims, replace=TRUE)
 # 
 # ecarm <- tibble(
-#   ulgtacct_code = member_ids,
-#   ulgtacct = paste("Member", member_ids),
+#   member_code = member_ids,
+#   member = paste("Member", member_ids),
 #   accident_date = sample(seq(ymd("2005-01-01"), ymd("2020-12-31"), by="day"), n_claims, replace=TRUE),
 #   policy_effective_date = sample(seq(ymd("2000-01-01"), ymd("2020-12-31"), by="year"), n_claims, replace=TRUE),
 #   incurred_dollars = round(rexp(n_claims, rate=1/25000),0) # mean ~25k losses
@@ -53,24 +53,24 @@ trustColors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","
 # 
 # 
 
-trust.LossesAssesment <- function(eCarma,trustdata,membernumber, output = c("Frequency","Severity", "FreqTable", "SevTable")){
+LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequency","Severity", "FreqTable", "SevTable")){
   
   # genearate data for member names to be displayed in graphs.
-  nameData <- eCarma %>% clean_names() %>%
-    select(ulgtacct_code, ulgtacct)
+  nameData <- loss_dat %>% clean_names() %>%
+    select(member_code, member)
   
   #Clean names for ecarma data
-  ecarmDat <- eCarma %>% clean_names()
+  ecarmDat <- loss_dat %>% clean_names()
   
   #get the policy effective date for the member and join to ecarma data
-  data3 <- trustdata %>% clean_names() %>% 
+  data3 <- prem_dat %>% clean_names() %>% 
     filter(product == "Liability") %>% 
     select(member_number,current_policy_effective_date) %>% 
-    right_join(ecarmDat, by = c("member_number" = "ulgtacct_code"))
+    right_join(ecarmDat, by = c("member_number" = "member_code"))
   
   # Put accident dates in appropriate policy year.
   data <- data3 %>% mutate(accident_date = ifelse(format(accident_date, "%m-%d") < format(current_policy_effective_date, "%m-%d"), year(accident_date) - 1, year(accident_date)))
-    
+  
   # select necessary columns in ecarma data and filter by entered member number.
   Losses <- data %>% clean_names() %>%
     select(member_number,accident_date, incurred_dollars) %>%
@@ -146,7 +146,7 @@ trust.LossesAssesment <- function(eCarma,trustdata,membernumber, output = c("Fre
     )
     
     LossesWithDed %>%
-      dygraph(main = paste(nameData$ulgtacct[nameData$ulgtacct_code == membernumber][1]," - GL Loss Severity Over Time with Different Deductibles")) %>%
+      dygraph(main = paste(nameData$member[nameData$member_code == membernumber][1]," - GL Loss Severity Over Time with Different Deductibles")) %>%
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
@@ -168,17 +168,17 @@ trust.LossesAssesment <- function(eCarma,trustdata,membernumber, output = c("Fre
   # Export a dygraph plot of claims frequency over time.
   else if(output == "Frequency"){
     ClaimCountWithDed <- tibble(Year = tbl1$accident_date, 
-                            first_dollar_coverage = tbl0$Claim_Count,
-                            TenkDed = tbl1$Claim_Count,
-                            TwoFiveDed = tbl2$Claim_Count,
-                            FiftyDed = tbl3$Claim_Count,
-                            SevFivDed = tbl4$Claim_Count,
-                            HunDed = tbl5$Claim_Count,
-                            TowHundDed = tbl6$Claim_Count
+                                first_dollar_coverage = tbl0$Claim_Count,
+                                TenkDed = tbl1$Claim_Count,
+                                TwoFiveDed = tbl2$Claim_Count,
+                                FiftyDed = tbl3$Claim_Count,
+                                SevFivDed = tbl4$Claim_Count,
+                                HunDed = tbl5$Claim_Count,
+                                TowHundDed = tbl6$Claim_Count
     )
     
     ClaimCountWithDed %>%
-      dygraph(main = paste(nameData$ulgtacct[nameData$ulgtacct_code == membernumber][1]," - GL Loss Frequency Over Time with Different Deductibles")) %>%
+      dygraph(main = paste(nameData$member[nameData$member_code == membernumber][1]," - GL Loss Frequency Over Time with Different Deductibles")) %>%
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
@@ -252,7 +252,7 @@ trust.LossesAssesment <- function(eCarma,trustdata,membernumber, output = c("Fre
 # Extreme - 50% Increase now 5% increase after
 
 
-trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Ten","Inception"), MemberNumber, deductible =0, LossAdjuster=0, TblOutput = c("LR", "Premiums","TotalPremVLosses")){
+simLosses <- function(PremData, LossData, LRTerm = c("Five","Ten","Inception"), MemberNumber, deductible =0, LossAdjuster=0, TblOutput = c("LR", "Premiums","TotalPremVLosses")){
   
   
   
@@ -263,54 +263,54 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   # 5 Year Data
   
   if (LRTerm == "Five"){
-  NewData <- myTrustLRData %>% clean_names() %>% 
-    filter(product == "Liability") %>%
-    filter(member_number == MemberNumber) %>% 
-    select(five_year_earned_premium, five_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-    mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-    as.matrix()
-  
-  MemberLosses <- EcarmaLossData %>% clean_names()%>% filter(ulgtacct_code == MemberNumber) %>%
-    mutate(accident_date = year(accident_date)) %>% 
-    filter(accident_date > year(Sys.Date())-5) 
-  
-  Claims <- trust.LossesAssesment(EcarmaLossData,myTrustLRData, MemberNumber, "FreqTable")%>% 
-    filter(Policy_Year > year(Sys.Date())-5) 
+    NewData <- PremData %>% clean_names() %>% 
+      filter(product == "Liability") %>%
+      filter(member_number == MemberNumber) %>% 
+      select(five_year_earned_premium, five_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+      as.matrix()
+    
+    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
+      mutate(accident_date = year(accident_date)) %>% 
+      filter(accident_date > year(Sys.Date())-5) 
+    
+    Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
+      filter(Policy_Year > year(Sys.Date())-5) 
   }
   ################################################################################  
   ################################################################################  
   # 10 Year Data
   else if (LRTerm == "Ten"){
-  NewData <- myTrustLRData %>% clean_names() %>% 
-    filter(product == "Liability") %>%
-    filter(member_number == MemberNumber) %>% 
-    select(ten_year_earned_premium, ten_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-    mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-    as.matrix()
-  
-  MemberLosses <- EcarmaLossData %>% clean_names()%>% filter(ulgtacct_code == MemberNumber) %>%
-    mutate(accident_date = year(accident_date)) %>% 
-    filter(accident_date > year(Sys.Date())-10) 
-  
-  Claims <- trust.LossesAssesment(EcarmaLossData,myTrustLRData, MemberNumber, "FreqTable")%>% 
-    filter(Policy_Year > year(Sys.Date())-10)
+    NewData <- PremData %>% clean_names() %>% 
+      filter(product == "Liability") %>%
+      filter(member_number == MemberNumber) %>% 
+      select(ten_year_earned_premium, ten_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+      as.matrix()
+    
+    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
+      mutate(accident_date = year(accident_date)) %>% 
+      filter(accident_date > year(Sys.Date())-10) 
+    
+    Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
+      filter(Policy_Year > year(Sys.Date())-10)
   }
   ################################################################################  
   ################################################################################  
   # Default to Inception Data
   
   else if (LRTerm == "Inception") {
-  NewData <- myTrustLRData %>% clean_names() %>% 
-    filter(product == "Liability") %>%
-    filter(member_number == MemberNumber) %>% 
-    select(inception_earned_premium, inception_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-    mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-    as.matrix()
-  
-  MemberLosses <- EcarmaLossData %>% clean_names()%>% filter(ulgtacct_code == MemberNumber) %>%
-    mutate(accident_date = year(accident_date)) 
-  
-  Claims <- trust.LossesAssesment(EcarmaLossData, myTrustLRData, MemberNumber, "FreqTable")
+    NewData <- PremData %>% clean_names() %>% 
+      filter(product == "Liability") %>%
+      filter(member_number == MemberNumber) %>% 
+      select(inception_earned_premium, inception_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+      as.matrix()
+    
+    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
+      mutate(accident_date = year(accident_date)) 
+    
+    Claims <- LossesAssesment(LossData, PremData, MemberNumber, "FreqTable")
   }
   ################################################################################    
   ################################################################################  
@@ -334,10 +334,10 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   # from an exponential distribution, filter out claims under deductible, sum up their losses for the year
   # to get simulated yearly incurred losses.
   for(i in 1:n){
-      x[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
-      y[[i]]<- ifelse(x[i] == 0,0,((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0))
-        #if(x[i] == 0) {0} else {((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0)}
-      y3[i] <- y[[i]]
+    x[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
+    y[[i]]<- ifelse(x[i] == 0,0,((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0))
+    #if(x[i] == 0) {0} else {((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0)}
+    y3[i] <- y[[i]]
   }
   
   # Add their yearly incurred amount to their total incurred.
@@ -403,11 +403,11 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   }
   Strat2Prem <- CurrPrem
   
- #-------------------------------------------------------------------------------
- #-------------------------------------------------------------------------------
- #------------------------------------------------------------------------------- 
- 
-   # Implement Aggressive - 30% Increase of premium  now 5% after
+  #-------------------------------------------------------------------------------
+  #-------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------- 
+  
+  # Implement Aggressive - 30% Increase of premium  now 5% after
   EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.3)
   rate <- 1.05 
   
@@ -422,9 +422,9 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
     CurrPrem[i] <- (CurrPrem[i-2] * (rate))
   }
   Strat3Prem <- CurrPrem
- #-------------------------------------------------------------------------------
- #-------------------------------------------------------------------------------
- #------------------------------------------------------------------------------- 
+  #-------------------------------------------------------------------------------
+  #-------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------- 
   
   # Implement Extreme - 50% Increase  of premium now and 5% increase after
   EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.5)
@@ -446,7 +446,7 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   #-------------------------------------------------------------------------------
   #-------------------------------------------------------------------------------  
   
-    #------------------------------------------------------------------------------- 
+  #------------------------------------------------------------------------------- 
   #Assemble and display data in tibble
   data <- tibble(Year = Year, 
                  Claims_Made = x,
@@ -475,7 +475,7 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   }
   # Export a table of yearly premiums
   else if (TblOutput == "Premiums") {
-     NewData %>% select(Year, Organic:Extreme)
+    NewData %>% select(Year, Organic:Extreme)
   }
   # Export the Total earned premiums with total incurred losses
   else if (TblOutput == "TotalPremVLosses") {
@@ -483,7 +483,7 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
   }
   # Export master table
   else {
-   NewData
+    NewData
   }
 }
 #############################
@@ -493,11 +493,11 @@ trust.simLosses <- function(myTrustLRData, EcarmaLossData, LRTerm = c("Five","Te
 # The simulated scenarios go off the 5, 10, and Inception Loss ratios and plot them togeterh.  
 # This provides a competitive advantage on how our pricing strategy would look if we/competition looked at only 5 or 10 year LR's.
 # This helps gauge the range of how well a specific strategy will perform over time, if somehow all of these scenarios played out.  This gives us a range of when we might see an account
-# become profitable.  Please note that this function is dependend on trust.simLosses() function and trust.simLosses() is dependent on trust.LossAssessment().  Ensure that all functions 
+# become profitable.  Please note that this function is dependend on simLosses() function and simLosses() is dependent on LossAssessment().  Ensure that all functions 
 # are loaded before running this one.
 
 
-trust.200Scenarios <- function(LRData, EcData, membernumber, Deductible =0, Loss_Adjuster=0, Strategy = c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")) {
+run_200Scenarios <- function(LRData, losses, membernumber, Deductible =0, Loss_Adjuster=0, Strategy = c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")) {
   # set up data sets for simulations
   Dat1 <- LRData %>% clean_names()
   Dat2 <- Dat1 %>% filter(product == "Liability") %>%
@@ -525,21 +525,21 @@ trust.200Scenarios <- function(LRData, EcData, membernumber, Deductible =0, Loss
     setTxtProgressBar(pb,i)
   }
   close(pb)
-  # run trust.simLosses() and generate the LR's for a specific strategy 200 times
+  # run simLosses() and generate the LR's for a specific strategy 200 times
   for (i in 1:a) {
-    SimI[i] <- trust.simLosses(myTrustLRData = LRData, EcarmaLossData = EcData,LRTerm = "Inception", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
+    SimI[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Inception", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
       select(Strategy)
     setTxtProgressBar(pb,i)
   }
   close(pb)
   for (i in 1:a) {
-    Sim5[i] <- trust.simLosses(myTrustLRData = LRData, EcarmaLossData = EcData,LRTerm = "Five", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
+    Sim5[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Five", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
       select(Strategy)
     setTxtProgressBar(pb,i)
   }
   close(pb)
   for (i in 1:a) {
-    Sim10[i] <- trust.simLosses(myTrustLRData = LRData, EcarmaLossData = EcData,LRTerm = "Ten", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
+    Sim10[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Ten", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
       select(Strategy)
     setTxtProgressBar(pb,i)
   }
@@ -567,32 +567,32 @@ trust.200Scenarios <- function(LRData, EcData, membernumber, Deductible =0, Loss
   DF2
 }  
 # Genearate First Dollar Coverage graph of Avg LR's for the scenarios of the selected
-  # strategy.
+# strategy.
 
-trust.GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")){
+GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")){
   Dat1 <- lrdata %>% clean_names()
   
   if(Deductible > 0){
     simdata %>%
-    dygraph(main = paste(Dat1$member_name[Dat1$member_number == membernumber][1], " - Strategy: ", Strategy, " - Deductible: $", format(Deductible, big.mark = ",",scientific =F), sep ="")) %>%
-    dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
-                highlightSeriesBackgroundAlpha = 0.2,
-                hideOnMouseOut = T) %>%
-    dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = trustColors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
-    dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = trustColors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
-    dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = trustColors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
-    dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
-    dyLimit(0.6, color = "black") %>%
-    dyAxis("y", label = "Loss Ratio") %>%
-    dyAxis("x", label = "Policy Year") %>%
-    dyLegend(width = 300, hideOnMouseOut = T)
+      dygraph(main = paste(Dat1$member_name[Dat1$member_number == membernumber][1], " - Strategy: ", Strategy, " - Deductible: $", format(Deductible, big.mark = ",",scientific =F), sep ="")) %>%
+      dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
+                  highlightSeriesBackgroundAlpha = 0.2,
+                  hideOnMouseOut = T) %>%
+      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = trustColors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
+      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = trustColors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
+      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = trustColors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
+      dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
+      dyLimit(0.6, color = "black") %>%
+      dyAxis("y", label = "Loss Ratio") %>%
+      dyAxis("x", label = "Policy Year") %>%
+      dyLegend(width = 300, hideOnMouseOut = T)
     
   }
   
   # Genearate a graph that displays the entered deductible for the Avg LR's for the 
   # scenarios of the selected strategy above.
-   else {
-     simdata %>%
+  else {
+    simdata %>%
       dygraph(main = paste(Dat1$member_name[Dat1$member_number == membernumber][1], " - Strategy: ", Strategy, " - Deductible: First Dollar Coverage", sep ="")) %>%
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.2,
@@ -605,41 +605,36 @@ trust.GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c(
       dyAxis("y", label = "Loss Ratio") %>%
       dyAxis("x", label = "Policy Year") %>%
       dyLegend(width = 300,hideOnMouseOut = T)
-     
-   }
+    
+  }
   
 }
-  
+
 ###############################################3
 # New GL Model Loss Sim
 
 
-trust.SimLossIQ <- function(eCarma,trustdata, Member_number, deduct) {
-
-memberLosses <- eCarma %>% clean_names()%>% filter(ulgtacct_code == Member_number) %>%
+SimLossIQ <- function(loss_dat,prem_dat, Member_number, deduct) {
+  
+  memberLosses <- loss_dat %>% clean_names()%>% filter(member_code == Member_number) %>%
     mutate(accident_date = year(accident_date)) %>% 
     filter(accident_date > year(Sys.Date())-5) 
   
-claims <- trust.LossesAssesment(eCarma,trustdata, Member_number, "FreqTable")%>% 
+  claims <- LossesAssesment(loss_dat,prem_dat, Member_number, "FreqTable")%>% 
     filter(Policy_Year > year(Sys.Date())-5)
   
-n <- 1000
-x<- rep(0,n)
-y<-list()
-y3 <- rep(0,n)
-nb_size <- 10  
-
-for(i in 1:n){
-  x[i] <- rnbinom(1, mu = mean(claims$first_dollar_coverage), size = nb_size)
-  y[[i]]<- if(x[i] == 0) {0} else {(rexp(x[i], rate = 1/mean(memberLosses$incurred_dollars))-deduct) %>% replace(.<0,0) %>% sum() %>% round(0)}
-  y3[i] <- y[[i]]
- }
-quantile(y3, c(0.5,0.75,1))
+  n <- 1000
+  x<- rep(0,n)
+  y<-list()
+  y3 <- rep(0,n)
+  nb_size <- 10  
+  
+  for(i in 1:n){
+    x[i] <- rnbinom(1, mu = mean(claims$first_dollar_coverage), size = nb_size)
+    y[[i]]<- if(x[i] == 0) {0} else {(rexp(x[i], rate = 1/mean(memberLosses$incurred_dollars))-deduct) %>% replace(.<0,0) %>% sum() %>% round(0)}
+    y3[i] <- y[[i]]
+  }
+  quantile(y3, c(0.5,0.75,1))
 }
 
-# trust.SimLossIQ(ecarm,trustdata, 13310, 0)
-
-
-
-
-
+# SimLossIQ(ecarm,prem_dat, 13310, 0)

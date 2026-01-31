@@ -10,10 +10,10 @@ rpareto1 <- function(n, scale, shape) {
 
 set.seed(42)
 
-### 1. Generate trustdata (member-level loss ratio summaries) ----
+### 1. Generate premium_data (member-level loss ratio summaries) ----
 n_members <- 15
 
-trustdata <- tibble(
+premium_data <- tibble(
   member_number = 1001:(1000 + n_members),
   product = "Liability",
   
@@ -36,13 +36,13 @@ trustdata <- tibble(
 ) %>%
   select(-starts_with("loss_multiplier"))
 
-### 2. Generate eCarma (claim-level detail) ----
+### 2. Generate loss_data (claim-level detail) ----
 # Claim count ~ Poisson(lambda proportional to premium)
 claims_list <- list()
 
-for (i in 1:nrow(trustdata)) {
-  member <- trustdata$member_number[i]
-  prem   <- trustdata$five_year_earned_premium[i]
+for (i in 1:nrow(premium_data)) {
+  member <- premium_data$member_number[i]
+  prem   <- premium_data$five_year_earned_premium[i]
   
   expected_claims <- prem / 2e5
   n_claims <- rnbinom(1, mu = expected_claims, size = 10) 
@@ -56,8 +56,8 @@ for (i in 1:nrow(trustdata)) {
     losses <- round(base_losses + tail_losses,0)
     
     claims_list[[i]] <- tibble(
-      ulgtacct_code = member,
-      ulgtacct = paste("Member", member),
+      member_code = member,
+      member = paste("Member", member),
       accident_date = sample(seq(ymd("2005-01-01"), ymd("2020-12-31"), by="day"), n_claims, replace=TRUE),
       policy_effective_date = sample(seq(ymd("2000-01-01"), ymd("2020-12-31"), by="year"), n_claims, replace=TRUE),
       incurred_dollars = losses
@@ -65,8 +65,8 @@ for (i in 1:nrow(trustdata)) {
   } else {
     # No claims → return empty tibble
     claims_list[[i]] <- tibble(
-      ulgtacct_code = integer(),
-      ulgtacct = character(),
+      member_code = integer(),
+      member = character(),
       accident_date = as.Date(character()),
       policy_effective_date = as.Date(character()),
       incurred_dollars = numeric()
@@ -74,7 +74,4 @@ for (i in 1:nrow(trustdata)) {
   }
 }
 
-ecarm <- bind_rows(claims_list)
-
-
-
+loss_data <- bind_rows(claims_list)
