@@ -29,28 +29,58 @@ source(file.path(app_dir, "generated_data_for_loss_simulation.R"))
 # Define UI for application that draws a histogram
 ui <- fluidPage(
   useShinydashboard(),
-  tags$style(HTML('#clicks{border-color: #84341c; background-color: #990606; color: #FFFFFF }')),
-  tags$style(HTML('#Deductible{border-color: #84341c;}')),
-  tags$style(HTML('#MemberNum{border-color: #84341c;}')),
-  tags$style(HTML('#title{color: #84341c; font-family:Verdana}')),
-  tags$style(HTML('#mem{color: #84341c; font-family:Verdana;font-weight: bold;}')),
-  tags$style(HTML('#ded{color: #84341c; font-family:Verdana;font-weight: bold;}')),
-  tags$style(HTML('#str{color: #84341c; font-family:Verdana; font-weight: bold;}')),
-  tags$style(HTML('#adj{color: #84341c; font-family:Verdana; font-weight: bold;}')),
+  tags$style(HTML('#clicks{border-color: #000; background-color: #000; color: #FFFFFF }')),
+  tags$style(HTML('#Deductible{border-color: #000;}')),
+  tags$style(HTML('#MemberNum{border-color: #000;}')),
+  tags$style(HTML('#title{color: #000; font-family:Verdana}')),
+  tags$style(HTML('#mem{color: #000; font-family:Verdana;font-weight: bold;}')),
+  tags$style(HTML('#ded{color: #000; font-family:Verdana;font-weight: bold;}')),
+  tags$style(HTML('#str{color: #000; font-family:Verdana; font-weight: bold;}')),
+  tags$style(HTML('#adj{color: #000; font-family:Verdana; font-weight: bold;}')),
+  tags$style(HTML("
+  #app-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;            /* <-- FIXED separation */
+    padding-left: 10px;
+  }
+
+  #app-logo {
+    height: 80px;
+    flex-shrink: 0;       /* logo never squishes */
+  }
   
-  setBackgroundColor(color = c("#FEF9EF","#F7F1E5","#EADBBE",sim_colors[3]), gradient = "linear", direction = "bottom"),
+    #title {
+    font-family: 'Times New Roman', Times, serif;
+  }
+  
+  .dygraph-wrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
+.dygraph-legend {
+  max-width: 100%;
+  white-space: normal !important;
+  word-break: break-word;
+}
+")),
+  
+  setBackgroundColor(color = c("#FFF","red","#000"), gradient = "linear", direction = "bottom"),
   titlePanel(
-    fluidRow(
-      column(3, 
-             # img(height = 200, width = 200, src = "Utah_Utes_logo.png",alt = "Utah Utes Logo")
+    div(
+      id = "app-header",
+      tags$img(
+        src = "utah_logo.png",
+        id = "app-logo"
       ),
-      column(9, h1(id = "title","General Liability Loss Simulator"))
-      
-    )),
+      h1(id = "title", "General Liability Loss Simulator")
+    )
+  ),
   
   sidebarLayout(position = "left",
                 sidebarPanel(width = 4,
-                             style = ("border-color:#84341c; border-width: 2px; background-color: #FFFFFF"),           
+                             style = ("border-color:#000; border-width: 2px; background-color: #FFFFFF"),           
                              numericInput("MemberNum", h6(id = "mem","Member Number"), value = premium_data$member_number[1]),  
                              numericInput("Deductible", h6(id = "ded","Deductible"), value = NULL),
                              
@@ -69,6 +99,7 @@ ui <- fluidPage(
                              
                              
                              sliderInput("Adjuster", h6(id = "adj","Loss Severity Adjuster"), 
+                                
                                          min = -3, max = 1, value = -1, step = 0.1),
                              
                              helpText("To INCREASE Loss Severity, move NEGATIVE.",
@@ -82,21 +113,43 @@ ui <- fluidPage(
                 
                 mainPanel(
                   fluidRow(
-                    box(tabsetPanel(type = "pills",
-                                    tabPanel("Severity Assesment",dygraphOutput("sev_assess")),
-                                    tabPanel("Frequency Assessment", dygraphOutput("freq_assess"))),title = "Loss Assessment", width = 15),
-                    tags$script(HTML("$('.box').eq(0).css('border', '2px solid #84341c');"))
+                    box(
+                      tabsetPanel(
+                        type = "pills",
+                        tabPanel(
+                          "Severity Assesment",
+                          div(
+                            class = "dygraph-wrapper",
+                            dygraphOutput("sev_assess")
+                          )
+                        ),
+                        tabPanel(
+                          "Frequency Assessment",
+                          div(
+                            class = "dygraph-wrapper",
+                            dygraphOutput("freq_assess")
+                          )
+                        )
+                      ),
+                      title = "Loss Assessment",
+                      width = 15
+                    ),
+                    tags$script(HTML("$('.box').eq(0).css('border', '2px solid #000');"))
                   ),
                   fluidRow(
-                    box(dygraphOutput("Simulator") %>% withSpinner(color = "#84341c", type = 6), title = "Simulated Loss Ratios", width = 15),
-                    tags$script(HTML("$('.box').eq(1).css({'border' : '2px solid #84341c'});"))
+                    box(
+                      div(
+                        class = "dygraph-wrapper",
+                        dygraphOutput("Simulator") %>% withSpinner(color = "#000", type = 6)
+                      ),
+                      title = "Simulated Loss Ratios",
+                      width = 15
+                    ),
+                    tags$script(HTML("$('.box').eq(1).css({'border' : '2px solid #000'});"))
                   ),
-                  
-                  
-                  
                 )
+              )
   )
-)
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
