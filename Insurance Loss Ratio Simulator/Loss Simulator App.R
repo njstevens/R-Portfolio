@@ -70,10 +70,10 @@ ui <- fluidPage(
   titlePanel(
     div(
       id = "app-header",
-      tags$img(
-        src = "utah_logo.png",
-        id = "app-logo"
-      ),
+      # tags$img(
+      #   src = "utah_logo.png",
+      #   id = "app-logo"
+      # ),
       h1(id = "title", "General Liability Loss Simulator")
     )
   ),

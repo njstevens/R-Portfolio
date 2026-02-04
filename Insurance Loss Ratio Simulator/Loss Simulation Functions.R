@@ -150,13 +150,13 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
-      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = trustColors[2])%>%
-      dySeries("TenkDed",label ="$10k Deductible",color =trustColors[1])%>%
-      dySeries("TwoFiveDed",label = "$25k Deductible",color =trustColors[3])%>%
-      dySeries("FiftyDed",label = "$50k Deductible",color =trustColors[4])%>%
-      dySeries("SevFivDed",label = "$75k Deductible",color =trustColors[5])%>%
-      dySeries("HunDed",label = "$100k Deductible",color =trustColors[6])%>%
-      dySeries("TowHundDed",label = "$200k Deductible",color =trustColors[7])%>%
+      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[2])%>%
+      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[1])%>%
+      dySeries("TwoFiveDed",label = "$25k Deductible",color =sim_colors[3])%>%
+      dySeries("FiftyDed",label = "$50k Deductible",color =sim_colors[4])%>%
+      dySeries("SevFivDed",label = "$75k Deductible",color =sim_colors[5])%>%
+      dySeries("HunDed",label = "$100k Deductible",color =sim_colors[6])%>%
+      dySeries("TowHundDed",label = "$200k Deductible",color =sim_colors[7])%>%
       dyAxis("y", label = "Incurred Loss Dollars",axisLabelFormatter = 'function(d){return "$" + d.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");}',
              valueFormatter = 'function(d){return "$"+ Math.round(d).toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");}', axisLabelWidth = 100) %>%
       dyAxis("x", label = "Policy Year") %>%
@@ -182,13 +182,13 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
-      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = trustColors[2])%>%
-      dySeries("TenkDed",label ="$10k Deductible",color =trustColors[1])%>%
-      dySeries("TwoFiveDed",label = "$25k Deductible",color =trustColors[3])%>%
-      dySeries("FiftyDed",label = "$50k Deductible",color =trustColors[4])%>%
-      dySeries("SevFivDed",label = "$75k Deductible",color =trustColors[5])%>%
-      dySeries("HunDed",label = "$100k Deductible",color =trustColors[6])%>%
-      dySeries("TowHundDed",label = "$200k Deductible",color =trustColors[7])%>%
+      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[2])%>%
+      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[1])%>%
+      dySeries("TwoFiveDed",label = "$25k Deductible",color =sim_colors[3])%>%
+      dySeries("FiftyDed",label = "$50k Deductible",color =sim_colors[4])%>%
+      dySeries("SevFivDed",label = "$75k Deductible",color =sim_colors[5])%>%
+      dySeries("HunDed",label = "$100k Deductible",color =sim_colors[6])%>%
+      dySeries("TowHundDed",label = "$200k Deductible",color =sim_colors[7])%>%
       dyAxis("y", label = "Number of Claims", axisLabelWidth = 50) %>%
       dyAxis("x", label = "Policy Year")%>%
       dyLegend(width = 900)
@@ -578,9 +578,9 @@ GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c("Organ
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.2,
                   hideOnMouseOut = T) %>%
-      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = trustColors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
-      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = trustColors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
-      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = trustColors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
+      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = sim_colors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
+      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = sim_colors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
+      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = sim_colors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
       dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
       dyLimit(0.6, color = "black") %>%
       dyAxis("y", label = "Loss Ratio") %>%
@@ -597,9 +597,9 @@ GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c("Organ
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.2,
                   hideOnMouseOut = T) %>%
-      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = trustColors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
-      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = trustColors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
-      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = trustColors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
+      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = sim_colors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
+      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = sim_colors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
+      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = sim_colors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
       dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
       dyLimit(0.6, color = "black") %>%
       dyAxis("y", label = "Loss Ratio") %>%
