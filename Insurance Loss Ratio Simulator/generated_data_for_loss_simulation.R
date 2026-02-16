@@ -4,74 +4,183 @@ library(janitor)
 
 
 # Helper: Pareto random number generator ----
+
+
+set.seed(342)
+
 rpareto1 <- function(n, scale, shape) {
   scale / (runif(n)^(1/shape))
 }
 
-set.seed(42)
+mem_list <- seq(1001,1015,1)
 
-### 1. Generate premium_data (member-level loss ratio summaries) ----
-n_members <- 15
+policy_dates <- seq(from = as.Date(floor_date(Sys.Date()-years(20), "year")), 
+                              to = as.Date(floor_date(Sys.Date(), "year")), 
+                              by = "year")
 
-premium_data <- tibble(
-  member_number = 1001:(1000 + n_members),
-  product = "Liability",
-  
-  five_year_earned_premium = round(runif(n_members, 2e6, 6e6),0),
-  ten_year_earned_premium  = round(runif(n_members, 4e6, 12e6),0),
-  inception_earned_premium = round(runif(n_members, 6e6, 20e6),0),
-  
-  # 60% high-loss (LR 1.1–2.0), 40% lower-loss (LR 0.55–0.85)
-  loss_multiplier_5  = ifelse(runif(n_members) < 0.6, runif(n_members, 1.1, 2.0), runif(n_members, 0.55, 0.85)),
-  loss_multiplier_10 = ifelse(runif(n_members) < 0.6, runif(n_members, 1.1, 2.0), runif(n_members, 0.55, 0.85)),
-  loss_multiplier_inc = ifelse(runif(n_members) < 0.6, runif(n_members, 1.1, 2.0), runif(n_members, 0.55, 0.85)),
-  
-  five_year_incurred = round(five_year_earned_premium * loss_multiplier_5),
-  ten_year_incurred  = round(ten_year_earned_premium  * loss_multiplier_10),
-  inception_incurred = round(inception_earned_premium * loss_multiplier_inc),
-  
-  current_policy_annual_premium = round(runif(n_members, 5e5, 1.5e6),0),
-  current_policy_effective_date = sample(seq(ymd("2010-01-01"), ymd("2020-12-31"), by="year"), 
-                                         n_members, replace=TRUE)
-) %>%
-  select(-starts_with("loss_multiplier"))
+member_policy_dates <- crossing(
+  member_number = mem_list,
+  policy_effective_date = policy_dates
+)
 
-### 2. Generate loss_data (claim-level detail) ----
-# Claim count ~ Poisson(lambda proportional to premium)
-claims_list <- list()
+loss_data <- member_policy_dates %>%
+  rowwise() %>%
+  mutate(
+    num_claims = rnbinom(1, mu = 8 , size = 10)
+  ) %>%
+  ungroup() %>%
+  # Expand each row by num_claims
+  uncount(num_claims) %>%
+  rowwise() %>%
+  mutate(
+    member = paste("Member", member_number),
+    # Accident date is random within policy year
+    accident_date = sample(seq(policy_effective_date, 
+                               policy_effective_date + years(1) - days(1), 
+                               by = "day"), 1),
+    pareto_flag = rbinom(1, 1, 0.02),
+    # Incurred dollars
+    incurred_dollars = rlnorm(1, meanlog=9, sdlog=1) + ifelse(pareto_flag==1, rpareto1(1, scale=5e4, shape=1.5), 0)
+  ) %>%
+  ungroup() %>%
+  select(member_number, member, policy_effective_date, accident_date, incurred_dollars)
 
-for (i in 1:nrow(premium_data)) {
-  member <- premium_data$member_number[i]
-  prem   <- premium_data$five_year_earned_premium[i]
+
+
+############ Generate Inception, 5 and 10 year losses
+
+
+yearly_losses <- loss_data %>%
+  group_by(member_number, member, policy_effective_date) %>%
+  summarise(
+    incurred_dollars = sum(incurred_dollars),
+    .groups = "drop"
+  ) %>%
+  arrange(member_number, policy_effective_date)
   
-  expected_claims <- prem / 2e5
-  n_claims <- rnbinom(1, mu = expected_claims, size = 10) 
+
+### Helper function for simulating premiums
+
+### This function uses 55% of the average of the total losses to start off, this is an arbitrary starting point, no real rhyme or reason to it
+### We increase the premiums 3% every year except on every other year the premiums are held flat
+### If the losses exceed the three previous years summed premiums then the premium is increased 10% (reactionary to catastrophic losses)
+
+## The goal here isn't to replicate the standard actuarial practice but rather the underwriting practices 
+## that were largely dictated by needing to make a sale.  i.e. if premiums increased too much the company would 
+## almost certainly lose the business if they could not justify the price increase with data.
+
+simulate_premiums <- function(losses_vec) {
+  n <- length(losses_vec)
+  premiums <- numeric(n)
   
-  if (n_claims > 0) {
-    # Claim severities: lognormal + occasional Pareto tail
-    base_losses <- rlnorm(n_claims, meanlog=10, sdlog=1)
-    tail_flag   <- rbinom(n_claims, 1, 0.02)
-    tail_losses <- ifelse(tail_flag==1, rpareto1(n_claims, scale=1e5, shape=1.5), 0)
-    
-    losses <- round(base_losses + tail_losses,0)
-    
-    claims_list[[i]] <- tibble(
-      member_code = member,
-      member = paste("Member", member),
-      accident_date = sample(seq(ymd("2005-01-01"), ymd("2020-12-31"), by="day"), n_claims, replace=TRUE),
-      policy_effective_date = sample(seq(ymd("2000-01-01"), ymd("2020-12-31"), by="year"), n_claims, replace=TRUE),
-      incurred_dollars = losses
-    )
-  } else {
-    # No claims → return empty tibble
-    claims_list[[i]] <- tibble(
-      member_code = integer(),
-      member = character(),
-      accident_date = as.Date(character()),
-      policy_effective_date = as.Date(character()),
-      incurred_dollars = numeric()
-    )
+  for (i in seq_len(n)) {
+    if (i == 1) {
+      # first year: avg loss + 10%
+      premiums[i] <- mean(losses_vec) * 0.55
+    } else {
+      # default: 3% increase
+      premiums[i] <- premiums[i-1] * 1.03
+      
+      # every other year hold flat
+      if (i %% 2 == 0) premiums[i] <- premiums[i-1]
+      
+      # if last year's loss > max previous 3 years of premiums, increase 5%
+      if (i > 1 && losses_vec[i-1] > max(premiums[max(1, i-3):(i-1)])) {
+        premiums[i] <- premiums[i] * 1.1
+      }
+    }
   }
+  return(premiums)
 }
 
-loss_data <- bind_rows(claims_list)
+yearly_losses_with_premiums <- yearly_losses %>%
+  group_by(member_number, member) %>%
+  mutate(
+    earned_premium = simulate_premiums(incurred_dollars)
+  ) %>%
+  ungroup()
+
+
+## Get 5 year aggregates
+
+five_year_data <- yearly_losses_with_premiums %>%
+  group_by(member_number) %>%
+  arrange(
+    member_number,
+    desc(policy_effective_date)
+  ) %>%
+  slice_head(n = 5) %>%
+  group_by(
+    member_number
+  ) %>%
+  summarise(
+    five_year_incurred = sum(incurred_dollars),
+    five_year_earned_premium = sum(earned_premium)
+  )
+
+## Get 10 year Aggregates
+
+ten_year_data <- yearly_losses_with_premiums %>%
+  group_by(member_number) %>%
+  arrange(
+    member_number,
+    desc(policy_effective_date)
+  ) %>%
+  slice_head(n = 10) %>%
+  group_by(
+    member_number
+  ) %>%
+  summarise(
+    ten_year_incurred = sum(incurred_dollars),
+    ten_year_earned_premium = sum(earned_premium)
+  )
+
+
+## Get Inception Aggregates
+inception_year_data <- yearly_losses_with_premiums %>%
+  group_by(member_number) %>%
+  summarise(
+    inception_incurred = sum(incurred_dollars),
+    inception_earned_premium = sum(earned_premium)
+  )
+
+## pull current premium and policy date information
+
+current_metrics <- yearly_losses_with_premiums %>%
+  group_by(member_number) %>%
+  arrange(
+    member_number,
+    desc(policy_effective_date)
+  ) %>%
+  slice_head(n = 1) %>%
+  select(
+    member_number,
+    "current_policy_effective_date"= policy_effective_date,
+    "current_policy_annual_premium"=earned_premium
+  )
+
+## Join everything into the format for simulation
+
+premium_data <- five_year_data %>%
+  inner_join(ten_year_data) %>%
+  inner_join(inception_year_data) %>%
+  inner_join(current_metrics) %>%
+  mutate(
+    product = "Liability",
+    member = paste("Member", member_number),
+  ) %>%
+  select(
+    member_number,
+    member,
+    product,
+    five_year_earned_premium,
+    ten_year_earned_premium,
+    inception_earned_premium,
+    five_year_incurred,
+    ten_year_incurred,
+    inception_incurred,
+    current_policy_annual_premium,
+    current_policy_effective_date
+  )
+
+

@@ -8,14 +8,29 @@ library(flexdashboard)
 library(janitor)
 library(EnvStats)
 library(scico)
+library(plotly)
 
-sim_colors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","#6600FF","#FFCC00","#000033")
+sim_colors <- c("#1b2fc4", 
+                "#b8330f",
+                "#787877",
+                "#e67d05",
+                "#339900",
+                "#FFCC00",
+                "#691cad")
+
+sim_plot_colors <- c(
+  "#f5a53d",
+  "#8dcbf0",
+  "#42f56f",
+  "#b86a06",
+  "#53a1cf",
+  "#2f9147"
+)
+
 ###########################################################################
 ### Generate Plot of Incurred Loss Dollars given different deductibles ###
 ##########################################################################
 # Import data from loss_dat.  Ensure ULGTACCT Code, ULGTACCT, Accident Date, Policy Effective Date and Incurred Dollars are present.  This is also used in the simulation process functions below.set.seed(123)
-
-
 
 
 # 
@@ -44,7 +59,7 @@ sim_colors <- c("#2596be", "#84341c", "#b8ac97","#21130d","#660066","#339900","#
 # member_ids <- sample(trustData$member_number, n_claims, replace=TRUE)
 # 
 # ecarm <- tibble(
-#   member_code = member_ids,
+#   member_number = member_ids,
 #   member = paste("Member", member_ids),
 #   accident_date = sample(seq(ymd("2005-01-01"), ymd("2020-12-31"), by="day"), n_claims, replace=TRUE),
 #   policy_effective_date = sample(seq(ymd("2000-01-01"), ymd("2020-12-31"), by="year"), n_claims, replace=TRUE),
@@ -57,16 +72,16 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
   
   # genearate data for member names to be displayed in graphs.
   nameData <- loss_dat %>% clean_names() %>%
-    select(member_code, member)
+    select(member_number, member)
   
-  #Clean names for ecarma data
-  ecarmDat <- loss_dat %>% clean_names()
+  #Clean names for loss data data
+  loss_dat <- loss_dat %>% clean_names()
   
-  #get the policy effective date for the member and join to ecarma data
+  #get the policy effective date for the member and join to loss data
   data3 <- prem_dat %>% clean_names() %>% 
     filter(product == "Liability") %>% 
     select(member_number,current_policy_effective_date) %>% 
-    right_join(ecarmDat, by = c("member_number" = "member_code"))
+    right_join(loss_dat)
   
   # Put accident dates in appropriate policy year.
   data <- data3 %>% mutate(accident_date = ifelse(format(accident_date, "%m-%d") < format(current_policy_effective_date, "%m-%d"), year(accident_date) - 1, year(accident_date)))
@@ -146,12 +161,12 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
     )
     
     LossesWithDed %>%
-      dygraph(main = paste(nameData$member[nameData$member_code == membernumber][1]," - GL Loss Severity Over Time with Different Deductibles")) %>%
+      dygraph(main = paste(nameData$member[nameData$member_number == membernumber][1]," - GL Loss Severity Over Time with Different Deductibles")) %>%
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
-      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[2])%>%
-      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[1])%>%
+      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[1])%>%
+      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[2])%>%
       dySeries("TwoFiveDed",label = "$25k Deductible",color =sim_colors[3])%>%
       dySeries("FiftyDed",label = "$50k Deductible",color =sim_colors[4])%>%
       dySeries("SevFivDed",label = "$75k Deductible",color =sim_colors[5])%>%
@@ -178,12 +193,12 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
     )
     
     ClaimCountWithDed %>%
-      dygraph(main = paste(nameData$member[nameData$member_code == membernumber][1]," - GL Loss Frequency Over Time with Different Deductibles")) %>%
+      dygraph(main = paste(nameData$member[nameData$member_number == membernumber][1]," - GL Loss Frequency Over Time with Different Deductibles")) %>%
       dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
                   highlightSeriesBackgroundAlpha = 0.5,
                   hideOnMouseOut = T) %>%
-      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[2])%>%
-      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[1])%>%
+      dySeries("first_dollar_coverage", label = "First Dollar Coverage",color = sim_colors[1])%>%
+      dySeries("TenkDed",label ="$10k Deductible",color =sim_colors[2])%>%
       dySeries("TwoFiveDed",label = "$25k Deductible",color =sim_colors[3])%>%
       dySeries("FiftyDed",label = "$50k Deductible",color =sim_colors[4])%>%
       dySeries("SevFivDed",label = "$75k Deductible",color =sim_colors[5])%>%
@@ -228,7 +243,183 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
 
 
 
-# Simulate losses drawing claim Counts from a Poisson Distribution then drawing the resultant number of claims' severity from 
+# Simulates yearly claims, losses, and earned premiums for a single member using
+# experience-based pricing. Premiums and deductibles adjust dynamically based on
+# trends in claim frequency and loss ratios, reflecting realistic underwriting
+# behavior. Outputs can include loss ratios, current premiums, or total incurred
+# losses versus earned premiums. Supports 5-year, 10-year, or inception-to-date
+# simulation periods.
+
+simLosses <- function(PremData, 
+                      LossData, 
+                      LRTerm = c("Five","Ten","Inception"), 
+                      MemberNumber, 
+                      base_deductible = 0, 
+                      LossAdjuster = 1, 
+                      TblOutput = c("LR", "Premiums","TotalPremVLosses"),
+                      n_years = 50,
+                      window = 3) {
+  
+  #-------------------------------
+  # Select the appropriate data
+  #-------------------------------
+  PremData <- PremData %>% clean_names() %>% filter(product == "Liability", member_number == MemberNumber)
+  LossData <- LossData %>% clean_names() %>% filter(member_number == MemberNumber)
+  
+  
+  base_deductible <- as.numeric(base_deductible)
+  
+  LossAdjuster <- as.numeric(LossAdjuster)
+  
+  if (LRTerm == "Five") {
+    earned_prem <- PremData$five_year_earned_premium
+    incurred <- PremData$five_year_incurred
+  } else if (LRTerm == "Ten") {
+    earned_prem <- PremData$ten_year_earned_premium
+    incurred <- PremData$ten_year_incurred
+  } else {
+    earned_prem <- PremData$inception_earned_premium
+    incurred <- PremData$inception_incurred
+  }
+  
+  curr_prem <- PremData$current_policy_annual_premium
+  start_year <- year(PremData$current_policy_effective_date)
+  
+  # Filter loss data for term
+  term_years <- switch(LRTerm,
+                       "Five" = 5,
+                       "Ten" = 10,
+                       "Inception" = max(year(LossData$accident_date)) - min(year(LossData$accident_date)) + 1)
+  
+  MemberLosses <- LossData %>%
+    mutate(accident_year = year(accident_date)) %>%
+    filter(accident_year > (year(Sys.Date()) - term_years))
+  
+  Claims <- LossesAssesment(LossData, PremData, MemberNumber, "FreqTable") %>%
+    filter(Policy_Year > year(Sys.Date()) - term_years)
+  
+  #-------------------------------
+  # Initialize vectors
+  #-------------------------------
+  Year <- seq(start_year, length.out = n_years)
+  Claims_Made <- rep(0, n_years)
+  Incurred_Losses <- rep(0, n_years)
+  Total_Incurred_Losses <- rep(0, n_years)
+  
+  Deductible <- rep(base_deductible, n_years)
+  CurrPrem <- rep(curr_prem, n_years)
+  EarnedPrem <- rep(earned_prem, n_years)
+  
+  #-------------------------------
+  # Helper: calculate rolling experience
+  #-------------------------------
+  calc_experience <- function(claims, losses, window = 3){
+    freq <- rollmean(claims, k = window, fill = NA, align = "right")
+    severity <- rollmean(ifelse(claims == 0, 0, losses / claims), k = window, fill = NA, align = "right")
+    pure_premium <- freq * severity
+    tibble(freq = freq, severity = severity, pure_premium = pure_premium)
+  }
+  
+  #-------------------------------
+  # Helper: dynamic pricing decision
+  #-------------------------------
+  pricing_decision <- function(prev_prem, freq_trend, lr){
+    rate_change <- 0
+    if(!is.na(freq_trend)){
+      if(freq_trend <= -0.20) rate_change <- -0.05   # good experience → small reduction
+      else if(freq_trend <= -0.10) rate_change <- 0  # hold flat
+      else if(freq_trend >= 0.10) rate_change <- 0.05 # worsening → increase
+    }
+    if(!is.na(lr)){
+      if(lr > 0.75) rate_change <- rate_change + 0.05
+      if(lr < 0.55) rate_change <- rate_change - 0.05
+    }
+    prev_prem * (1 + rate_change)
+  }
+  
+  #-------------------------------
+  # Simulate yearly claims
+  #-------------------------------
+  nb_size <- 10
+  for(i in 1:n_years){
+    # number of claims
+    Claims_Made[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
+    
+    # simulate losses
+    if(Claims_Made[i] == 0){
+      Incurred_Losses[i] <- 0
+    } else {
+      Incurred_Losses[i] <- sum(pmax(
+        rexp(Claims_Made[i], rate = 1/mean(MemberLosses$incurred_dollars)) * LossAdjuster - Deductible[i],
+        0
+      ))
+    }
+    
+    # update total
+    if(i == 1) Total_Incurred_Losses[i] <- incurred else Total_Incurred_Losses[i] <- Total_Incurred_Losses[i-1] + Incurred_Losses[i]
+    
+    # compute experience
+    if(i > 1){
+      freq_trend <- ifelse(i > 1, (Claims_Made[i-1] - Claims_Made[i-2])/Claims_Made[i-2], 0)
+      lr <- Total_Incurred_Losses[i-1] / EarnedPrem[i-1]
+      
+      # update premium
+      CurrPrem[i] <- pricing_decision(CurrPrem[i-1], freq_trend, lr)
+      
+      # update deductible if experience improved
+      if(!is.na(freq_trend) && freq_trend <= -0.20){
+        Deductible[i] <- max(Deductible[i-1] - 500, 0)
+      } else {
+        Deductible[i] <- Deductible[i-1]
+      }
+      
+      EarnedPrem[i] <- EarnedPrem[i-1] + CurrPrem[i]
+    }
+  }
+  
+  #-------------------------------
+  # Assemble output tibble
+  #-------------------------------
+  data <- tibble(
+    Year = Year,
+    Claims_Made = Claims_Made,
+    Incurred_Losses = Incurred_Losses,
+    Total_Incurred_Losses = Total_Incurred_Losses,
+    Premium = CurrPrem,
+    Earned_Premium = EarnedPrem,
+    Deductible = Deductible
+  )
+  
+  data <- data %>% mutate(
+    Loss_Ratio = Total_Incurred_Losses / Earned_Premium
+  )
+  
+  #-------------------------------
+  # Return requested output
+  #-------------------------------
+  if(TblOutput == "LR") return(data %>% select(Year, Loss_Ratio))
+  if(TblOutput == "Premiums") return(data %>% select(Year, Premium))
+  if(TblOutput == "FullTable") return(data %>% select(Year, Total_Incurred_Losses, Earned_Premium,Loss_Ratio, Premium, Deductible))
+  
+  return(data)
+}
+
+### TEST CODE
+# term <-simLosses(premium_data,
+#   loss_data,
+#   LRTerm = "Inception",
+#   MemberNumber = 1001,
+#   base_deductible = 10000,
+#   LossAdjuster = 1,
+#   TblOutput = "LR",
+#   n_years = 50,
+#   window = 5)
+
+##### OLD SIM LOSSES ################
+#####################################
+
+
+# Simulate losses drawing claim Counts from a Negative Binomial Distribution then drawing the resultant number of claims' severity from 
 # an Exponential distribution.  Research showed that claims frequency can be best modeled by a Poisson distribution and 
 # Severity is best modeled by an exponential distribution. The density plots of CWH's frequency and severity also confirm what
 # research has shown. 
@@ -251,390 +442,456 @@ LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequenc
 # Aggressive - 30% Increase now 5% after
 # Extreme - 50% Increase now 5% increase after
 
+# simLosses <- function(PremData, 
+#                       LossData, 
+#                       LRTerm = c("Five","Ten","Inception"), 
+#                       MemberNumber, 
+#                       deductible =0, 
+#                       LossAdjuster=0, 
+#                       TblOutput = c("LR", "Premiums","TotalPremVLosses")
+#                       ){
+#   
+#   
+#   
+#   # Set up data sets for simulationn
+#   
+#   ################################################################################  
+#   ################################################################################  
+#   # 5 Year Data
+#   
+#   if (LRTerm == "Five"){
+#     NewData <- PremData %>% clean_names() %>% 
+#       filter(product == "Liability") %>%
+#       filter(member_number == MemberNumber) %>% 
+#       select(five_year_earned_premium, five_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+#       mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+#       as.matrix()
+#     
+#     MemberLosses <- LossData %>% clean_names()%>% filter(member_number == MemberNumber) %>%
+#       mutate(accident_date = year(accident_date)) %>% 
+#       filter(accident_date > year(Sys.Date())-5) 
+#     
+#     Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
+#       filter(Policy_Year > year(Sys.Date())-5) 
+#   }
+#   ################################################################################  
+#   ################################################################################  
+#   # 10 Year Data
+#   else if (LRTerm == "Ten"){
+#     NewData <- PremData %>% clean_names() %>% 
+#       filter(product == "Liability") %>%
+#       filter(member_number == MemberNumber) %>% 
+#       select(ten_year_earned_premium, ten_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+#       mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+#       as.matrix()
+#     
+#     MemberLosses <- LossData %>% clean_names()%>% filter(member_number == MemberNumber) %>%
+#       mutate(accident_date = year(accident_date)) %>% 
+#       filter(accident_date > year(Sys.Date())-10) 
+#     
+#     Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
+#       filter(Policy_Year > year(Sys.Date())-10)
+#   }
+#   ################################################################################  
+#   ################################################################################  
+#   # Default to Inception Data
+#   
+#   else if (LRTerm == "Inception") {
+#     NewData <- PremData %>% clean_names() %>% 
+#       filter(product == "Liability") %>%
+#       filter(member_number == MemberNumber) %>% 
+#       select(inception_earned_premium, inception_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
+#       mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
+#       as.matrix()
+#     
+#     MemberLosses <- LossData %>% clean_names()%>% filter(member_number == MemberNumber) %>%
+#       mutate(accident_date = year(accident_date)) 
+#     
+#     Claims <- LossesAssesment(LossData, PremData, MemberNumber, "FreqTable")
+#   }
+#   ################################################################################    
+#   ################################################################################  
+#   
+#   # Initialize Parameters for sampling
+#   n <- 50
+#   x<- rep(0,n)
+#   y<-list()
+#   y3 <- rep(0,n)
+#   # y1 <- rep(0,n) 
+#   Year <- rep(0,n)
+#   Total_Loss_Dollars <-rep(0,n)
+#   EarnedPrem <- rep(0,n)
+#   CurrPrem <- rep(0,n)
+#   nb_size <- 10
+#   Year[1] <- NewData[4]
+#   Total_Loss_Dollars[1] <- NewData[2]
+#   EarnedPrem[1] <- NewData[1]
+#   CurrPrem[1] <- NewData[3]
+#   
+#   # Generate yearly claim count from Negative Binomial Poisson and Exponential Distribution then draw that num of claims
+#   # from an exponential distribution, filter out claims under deductible, sum up their losses for the year
+#   # to get simulated yearly incurred losses.
+#   
+#   for(i in 1:n){
+#     x[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
+#     y[[i]]<- ifelse(x[i] == 0,0,((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(LossAdjuster))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0))
+#     #if(x[i] == 0) {0} else {((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0)}
+#     y3[i] <- y[[i]]
+#   }
+#   
+#   # Add their yearly incurred amount to their total incurred.
+#   for(i in 2:n){
+#     Total_Loss_Dollars[i] <- Total_Loss_Dollars[i-1] + y3[i-1]
+#   }
+#   #Generate Years losses are simulated to occur.
+#   for (i in 2:n){
+#     Year[i] <- Year[i-1] + 1
+#   }
+#   
+#   #-------------------------------------------------------------------------------  
+#   
+#   # Organic - simply increase premium 3% Every year
+#   
+#   rate <- 1.03 
+#   
+#   for(i in 2:n){
+#     EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-1)))
+#   }
+#   DoNothin <- EarnedPrem
+#   
+#   # Premiums for Organic 
+#   rate <- 1.03 
+#   
+#   for(i in 2:n){
+#     CurrPrem[i] <- CurrPrem[i-1] * (rate)
+#   }
+#   PremDoNothin <- CurrPrem
+#   #-------------------------------------------------------------------------------
+#   #------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   # Implement Organic Heavy - 5% increase premium every year
+#   
+#   rate <- 1.05 
+#   
+#   for(i in 2:n){
+#     EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-1)))
+#   }
+#   Strat1EarnePrem <- EarnedPrem
+#   # Premiums for Organic Heavy
+#   for(i in 2:n){
+#     CurrPrem[i] <- (CurrPrem[i-1] * (rate))
+#   }
+#   Strat1Prem <- CurrPrem
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   # Implement Moderate Aggressive - 15% Increase of premium now 5% after
+#   
+#   EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.15)
+#   rate <- 1.05 
+#   
+#   for(i in 3:n){
+#     EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-2)))
+#   }
+#   Strat2EarnePrem <- EarnedPrem
+#   # Premiums for Moderate Aggressive
+#   CurrPrem[2] <- CurrPrem[1] * 1.15
+#   
+#   for(i in 3:n){
+#     CurrPrem[i] <- (CurrPrem[i-2] * (rate))
+#   }
+#   Strat2Prem <- CurrPrem
+#   
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   #------------------------------------------------------------------------------- 
+#   
+#   # Implement Aggressive - 30% Increase of premium  now 5% after
+#   EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.3)
+#   rate <- 1.05 
+#   
+#   for(i in 3:n){
+#     EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-2)))
+#   }
+#   Strat3EarnePrem <- EarnedPrem
+#   # Premiums for Aggressive
+#   CurrPrem[2] <- CurrPrem[1] * 1.3
+#   
+#   for(i in 3:n){
+#     CurrPrem[i] <- (CurrPrem[i-2] * (rate))
+#   }
+#   Strat3Prem <- CurrPrem
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   #------------------------------------------------------------------------------- 
+#   
+#   # Implement Extreme - 50% Increase  of premium now and 5% increase after
+#   EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.5)
+#   rate <- 1.05 
+#   
+#   for(i in 3:n){
+#     EarnedPrem[i] <- EarnedPrem[i-1] + ((CurrPrem[1] *1.5) * (rate^(i-2)))
+#   }
+#   Strat4EarnePrem <- EarnedPrem
+#   # Premiums for Extreme
+#   CurrPrem[2] <- CurrPrem[1] * 1.5
+#   
+#   for(i in 3:n){
+#     CurrPrem[i] <- (CurrPrem[i-1] * (rate))
+#   }
+#   Strat4Prem <- CurrPrem
+#   
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------
+#   #-------------------------------------------------------------------------------  
+#   
+#   #------------------------------------------------------------------------------- 
+#   #Assemble and display data in tibble
+#   data <- tibble(Year = Year, 
+#                  Claims_Made = x,
+#                  Incurred_Losses = y3,
+#                  Total_Incurred_Losses = Total_Loss_Dollars,
+#                  Organic = PremDoNothin,
+#                  Organic_Heavy = Strat1Prem,
+#                  Moderate_Aggressive = Strat2Prem,
+#                  Aggressive = Strat3Prem,
+#                  Extreme = Strat4Prem,
+#                  Organic_Prem = DoNothin,
+#                  Organic_Heavy_Prem = Strat1EarnePrem,
+#                  Moderate_Aggressive_Prem = Strat2EarnePrem,
+#                  Aggressive_Prem = Strat3EarnePrem,
+#                  Extreme_Prem = Strat4EarnePrem)
+#   # Genearate the Loss Ratios from the above table
+#   NewData <- data %>% mutate(Organic_LR = Total_Incurred_Losses / Organic_Prem,
+#                              Organic_Heavy_LR = Total_Incurred_Losses / Organic_Heavy_Prem,
+#                              Moderate_Aggressive_LR = Total_Incurred_Losses / Moderate_Aggressive_Prem,
+#                              Aggressive_LR= Total_Incurred_Losses / Aggressive_Prem,
+#                              Extreme_LR = Total_Incurred_Losses / Extreme_Prem)
+#   
+#   # Export Loss Ratios table
+#   if (TblOutput == "LR"){
+#     NewData %>% select(Year, Organic_LR:Extreme_LR)
+#   }
+#   # Export a table of yearly premiums
+#   else if (TblOutput == "Premiums") {
+#     NewData %>% select(Year, Organic:Extreme)
+#   }
+#   # Export the Total earned premiums with total incurred losses
+#   else if (TblOutput == "TotalPremVLosses") {
+#     NewData %>% select(Year, Total_Incurred_Losses, Organic_Prem:Extreme_Prem)
+#   }
+#   # Export master table
+#   else {
+#     NewData
+#   }
+# }
 
-simLosses <- function(PremData, LossData, LRTerm = c("Five","Ten","Inception"), MemberNumber, deductible =0, LossAdjuster=0, TblOutput = c("LR", "Premiums","TotalPremVLosses")){
-  
-  
-  
-  # Set up data sets for simulationn
-  
-  ################################################################################  
-  ################################################################################  
-  # 5 Year Data
-  
-  if (LRTerm == "Five"){
-    NewData <- PremData %>% clean_names() %>% 
-      filter(product == "Liability") %>%
-      filter(member_number == MemberNumber) %>% 
-      select(five_year_earned_premium, five_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-      as.matrix()
-    
-    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
-      mutate(accident_date = year(accident_date)) %>% 
-      filter(accident_date > year(Sys.Date())-5) 
-    
-    Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
-      filter(Policy_Year > year(Sys.Date())-5) 
-  }
-  ################################################################################  
-  ################################################################################  
-  # 10 Year Data
-  else if (LRTerm == "Ten"){
-    NewData <- PremData %>% clean_names() %>% 
-      filter(product == "Liability") %>%
-      filter(member_number == MemberNumber) %>% 
-      select(ten_year_earned_premium, ten_year_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-      as.matrix()
-    
-    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
-      mutate(accident_date = year(accident_date)) %>% 
-      filter(accident_date > year(Sys.Date())-10) 
-    
-    Claims <- LossesAssesment(LossData,PremData, MemberNumber, "FreqTable")%>% 
-      filter(Policy_Year > year(Sys.Date())-10)
-  }
-  ################################################################################  
-  ################################################################################  
-  # Default to Inception Data
-  
-  else if (LRTerm == "Inception") {
-    NewData <- PremData %>% clean_names() %>% 
-      filter(product == "Liability") %>%
-      filter(member_number == MemberNumber) %>% 
-      select(inception_earned_premium, inception_incurred,current_policy_annual_premium, current_policy_effective_date) %>%
-      mutate(current_policy_effective_date = year(current_policy_effective_date)) %>%
-      as.matrix()
-    
-    MemberLosses <- LossData %>% clean_names()%>% filter(member_code == MemberNumber) %>%
-      mutate(accident_date = year(accident_date)) 
-    
-    Claims <- LossesAssesment(LossData, PremData, MemberNumber, "FreqTable")
-  }
-  ################################################################################    
-  ################################################################################  
-  
-  # Initialize Parameters for sampling
-  n <- 50
-  x<- rep(0,n)
-  y<-list()
-  y3 <- rep(0,n)
-  # y1 <- rep(0,n) 
-  Year <- rep(0,n)
-  Total_Loss_Dollars <-rep(0,n)
-  EarnedPrem <- rep(0,n)
-  CurrPrem <- rep(0,n)
-  nb_size <- 10
-  Year[1] <- NewData[4]
-  Total_Loss_Dollars[1] <- NewData[2]
-  EarnedPrem[1] <- NewData[1]
-  CurrPrem[1] <- NewData[3]
-  # Generate yearly claim count from Poisson and Exponential Distribution then draw that num of claims
-  # from an exponential distribution, filter out claims under deductible, sum up their losses for the year
-  # to get simulated yearly incurred losses.
-  for(i in 1:n){
-    x[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
-    y[[i]]<- ifelse(x[i] == 0,0,((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0))
-    #if(x[i] == 0) {0} else {((rexp(x[i], rate = 1/mean(MemberLosses$incurred_dollars))*(1-(LossAdjuster)))-deductible) %>% replace(.<0,0) %>% sum() %>% round(0)}
-    y3[i] <- y[[i]]
-  }
-  
-  # Add their yearly incurred amount to their total incurred.
-  for(i in 2:n){
-    Total_Loss_Dollars[i] <- Total_Loss_Dollars[i-1] + y3[i-1]
-  }
-  #Generate Years losses are simulated to occur.
-  for (i in 2:n){
-    Year[i] <- Year[i-1] + 1
-  }
-  
-  #-------------------------------------------------------------------------------  
-  
-  # Organic - simply increase premium 3% Every year
-  
-  rate <- 1.03 
-  
-  for(i in 2:n){
-    EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-1)))
-  }
-  DoNothin <- EarnedPrem
-  
-  # Premiums for Organic 
-  rate <- 1.03 
-  
-  for(i in 2:n){
-    CurrPrem[i] <- CurrPrem[i-1] * (rate)
-  }
-  PremDoNothin <- CurrPrem
-  #-------------------------------------------------------------------------------
-  #------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  # Implement Organic Heavy - 5% increase premium every year
-  
-  rate <- 1.05 
-  
-  for(i in 2:n){
-    EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-1)))
-  }
-  Strat1EarnePrem <- EarnedPrem
-  # Premiums for Organic Heavy
-  for(i in 2:n){
-    CurrPrem[i] <- (CurrPrem[i-1] * (rate))
-  }
-  Strat1Prem <- CurrPrem
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  # Implement Moderate Aggressive - 15% Increase of premium now 5% after
-  
-  EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.15)
-  rate <- 1.05 
-  
-  for(i in 3:n){
-    EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-2)))
-  }
-  Strat2EarnePrem <- EarnedPrem
-  # Premiums for Moderate Aggressive
-  CurrPrem[2] <- CurrPrem[1] * 1.15
-  
-  for(i in 3:n){
-    CurrPrem[i] <- (CurrPrem[i-2] * (rate))
-  }
-  Strat2Prem <- CurrPrem
-  
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  #------------------------------------------------------------------------------- 
-  
-  # Implement Aggressive - 30% Increase of premium  now 5% after
-  EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.3)
-  rate <- 1.05 
-  
-  for(i in 3:n){
-    EarnedPrem[i] <- EarnedPrem[i-1] + (CurrPrem[1] * (rate^(i-2)))
-  }
-  Strat3EarnePrem <- EarnedPrem
-  # Premiums for Aggressive
-  CurrPrem[2] <- CurrPrem[1] * 1.3
-  
-  for(i in 3:n){
-    CurrPrem[i] <- (CurrPrem[i-2] * (rate))
-  }
-  Strat3Prem <- CurrPrem
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  #------------------------------------------------------------------------------- 
-  
-  # Implement Extreme - 50% Increase  of premium now and 5% increase after
-  EarnedPrem[2] <- EarnedPrem[1] + (CurrPrem[1] * 1.5)
-  rate <- 1.05 
-  
-  for(i in 3:n){
-    EarnedPrem[i] <- EarnedPrem[i-1] + ((CurrPrem[1] *1.5) * (rate^(i-2)))
-  }
-  Strat4EarnePrem <- EarnedPrem
-  # Premiums for Extreme
-  CurrPrem[2] <- CurrPrem[1] * 1.5
-  
-  for(i in 3:n){
-    CurrPrem[i] <- (CurrPrem[i-1] * (rate))
-  }
-  Strat4Prem <- CurrPrem
-  
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------  
-  
-  #------------------------------------------------------------------------------- 
-  #Assemble and display data in tibble
-  data <- tibble(Year = Year, 
-                 Claims_Made = x,
-                 Incurred_Losses = y3,
-                 Total_Incurred_Losses = Total_Loss_Dollars,
-                 Organic = PremDoNothin,
-                 Organic_Heavy = Strat1Prem,
-                 Moderate_Aggressive = Strat2Prem,
-                 Aggressive = Strat3Prem,
-                 Extreme = Strat4Prem,
-                 Organic_Prem = DoNothin,
-                 Organic_Heavy_Prem = Strat1EarnePrem,
-                 Moderate_Aggressive_Prem = Strat2EarnePrem,
-                 Aggressive_Prem = Strat3EarnePrem,
-                 Extreme_Prem = Strat4EarnePrem)
-  # Genearate the Loss Ratios from the above table
-  NewData <- data %>% mutate(Organic_LR = Total_Incurred_Losses / Organic_Prem,
-                             Organic_Heavy_LR = Total_Incurred_Losses / Organic_Heavy_Prem,
-                             Moderate_Aggressive_LR = Total_Incurred_Losses / Moderate_Aggressive_Prem,
-                             Aggressive_LR= Total_Incurred_Losses / Aggressive_Prem,
-                             Extreme_LR = Total_Incurred_Losses / Extreme_Prem)
-  
-  # Export Loss Ratios table
-  if (TblOutput == "LR"){
-    NewData %>% select(Year, Organic_LR:Extreme_LR)
-  }
-  # Export a table of yearly premiums
-  else if (TblOutput == "Premiums") {
-    NewData %>% select(Year, Organic:Extreme)
-  }
-  # Export the Total earned premiums with total incurred losses
-  else if (TblOutput == "TotalPremVLosses") {
-    NewData %>% select(Year, Total_Incurred_Losses, Organic_Prem:Extreme_Prem)
-  }
-  # Export master table
-  else {
-    NewData
-  }
-}
+
 #############################
 
+run_simulations <- function(
+    LRData, losses, membernumber,
+    Deductible = 0,
+    Loss_Adjuster = 0,
+    n_sims = 200,
+    n_show = 20
+) {
+  
+  # --- Years ---------------------------------------------------
+  start_year <- LRData %>%
+    clean_names() %>%
+    filter(product == "Liability",
+           member_number == membernumber) %>%
+    pull(current_policy_effective_date) %>%
+    min() %>%
+    lubridate::year()
+  
+  years <- start_year:(start_year + 49)
+  
+  # --- Helper to run sims ------------------------------------
+  
 
-# The below function runs through a loop of 200 scenarios of the above function and then plots the average loss ratios along with the confidence interval of the max and min loss ratios.
-# The simulated scenarios go off the 5, 10, and Inception Loss ratios and plot them togeterh.  
-# This provides a competitive advantage on how our pricing strategy would look if we/competition looked at only 5 or 10 year LR's.
-# This helps gauge the range of how well a specific strategy will perform over time, if somehow all of these scenarios played out.  This gives us a range of when we might see an account
-# become profitable.  Please note that this function is dependend on simLosses() function and simLosses() is dependent on LossAssessment().  Ensure that all functions 
-# are loaded before running this one.
+  run_term <- function(term) {
+      replicate(
+              n_sims,
+              simLosses(
+                PremData = LRData,
+                LossData = losses,
+                LRTerm = term,
+                MemberNumber = membernumber,
+                base_deductible = Deductible,
+                LossAdjuster = Loss_Adjuster,
+                TblOutput = "LR"
+                ) %>% pull(Loss_Ratio)
+      )
+    }
+  
+  
+  
+  SimI_all  <- run_term("Inception")
+  Sim5_all  <- run_term("Five")
+  Sim10_all <- run_term("Ten")
+  
+  # --- Averages -----------------------------------------------
+  AvgI  <- rowMeans(SimI_all)
+  Avg5  <- rowMeans(Sim5_all)
+  Avg10 <- rowMeans(Sim10_all)
+  
+  # --- Randomly select 20 full paths --------------------------
+  keep <- sample(seq_len(n_sims), n_show)
+  
+  SimI  <- SimI_all[, keep, drop = FALSE]
+  Sim5  <- Sim5_all[, keep, drop = FALSE]
+  Sim10 <- Sim10_all[, keep, drop = FALSE]
+  
 
+  
+  # --- Final dataframe ----------------------------------------
+  out <- tibble(
+    Year = years,
+    AvgI = AvgI,
+    Avg5 = Avg5,
+    Avg10 = Avg10
+  )
+  
+  # add individual simulation paths
+  for (i in seq_len(n_show)) {
+    out[[paste0("I_", i)]]  <- SimI[, i]
+    out[[paste0("F_", i)]]  <- Sim5[, i]
+    out[[paste0("T_", i)]]  <- Sim10[, i]
+  }
+  
+  out
+}
 
-run_200Scenarios <- function(LRData, losses, membernumber, Deductible =0, Loss_Adjuster=0, Strategy = c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")) {
-  # set up data sets for simulations
-  Dat1 <- LRData %>% clean_names()
-  Dat2 <- Dat1 %>% filter(product == "Liability") %>%
-    filter(member_number == membernumber) %>% 
-    select(current_policy_effective_date) %>%
-    mutate(current_policy_effective_date = year(current_policy_effective_date))%>%
-    as.matrix()
-  
-  # initialize parameters for loss scenarios
-  a <- 200
-  SimI <- rep(0,a)
-  Sim5 <- rep(0,a)
-  Sim10 <- rep(0,a)
-  
-  DatYear <- Dat2[1] 
-  n <- 50
-  pb <- txtProgressBar(min = 0,
-                       max = n,
-                       style = 3,
-                       width = 50,
-                       char = "=")
-  # generate years to use
-  for (i in 2:n){
-    DatYear[i] <- DatYear[i-1] + 1
-    setTxtProgressBar(pb,i)
-  }
-  close(pb)
-  # run simLosses() and generate the LR's for a specific strategy 200 times
-  for (i in 1:a) {
-    SimI[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Inception", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
-      select(Strategy)
-    setTxtProgressBar(pb,i)
-  }
-  close(pb)
-  for (i in 1:a) {
-    Sim5[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Five", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
-      select(Strategy)
-    setTxtProgressBar(pb,i)
-  }
-  close(pb)
-  for (i in 1:a) {
-    Sim10[i] <- simLosses(PremData = LRData, LossData = losses,LRTerm = "Ten", MemberNumber=membernumber, deductible = Deductible, LossAdjuster = Loss_Adjuster, TblOutput = "LR") %>%
-      select(Strategy)
-    setTxtProgressBar(pb,i)
-  }
-  close(pb)
-  # Store all 200 scenarios in a data frame, each scenario is a column of LR's
-  DFI <- data.frame(do.call(cbind, SimI))
-  DF5 <- data.frame(do.call(cbind, Sim5))
-  DF10 <- data.frame(do.call(cbind, Sim10))
-  # Calculate the min, max, and mean of each row in order to set up a range in the
-  # dygraph plot below.
-  MeansI<- rowMeans(DFI)
-  MinsI <- apply(DFI,1, FUN = min)
-  MaxsI <- apply(DFI,1, FUN = max)
-  
-  Means5<- rowMeans(DF5)
-  Mins5 <- apply(DF5,1, FUN = min)
-  Maxs5 <- apply(DF5,1, FUN = max)
-  
-  Means10<- rowMeans(DF10)
-  Mins10 <- apply(DF10,1, FUN = min)
-  Maxs10 <- apply(DF10,1, FUN = max)
-  
-  # bind all columns together 
-  DF2 <- cbind(DatYear,MinsI, MeansI, MaxsI, Mins5, Means5, Maxs5,Mins10, Means10, Maxs10) %>% as_tibble()
-  DF2
-}  
-# Genearate First Dollar Coverage graph of Avg LR's for the scenarios of the selected
-# strategy.
+### TEST CODE
+# 
+# Sim_Dat <-run_simulations(
+#     premium_data, loss_data, 1002,
+#     Deductible = 10000,
+#     Loss_Adjuster = 1,
+#     n_sims = 200,
+#     n_show = 20
+# )
+# 
+# 
+# lrdata <- premium_data
+# simdata <- Sim_Dat
 
-GenSimPlot <- function(simdata,lrdata,Deductible,membernumber,Strategy =c("Organic_LR", "Organic_Heavy_LR", "Moderate_Aggressive_LR", "Aggressive_LR", "Extreme_LR")){
+GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
+  
   Dat1 <- lrdata %>% clean_names()
+  title <- paste0(
+    Dat1$member[Dat1$member_number == membernumber][1],
+    " - Experience Based Pricing",
+    ifelse(Deductible > 0,
+           paste0(" - Starting Deductible: $", format(Deductible, big.mark = ",")),
+           " - Deductible: First Dollar Coverage")
+  )
   
-  if(Deductible > 0){
-    simdata %>%
-      dygraph(main = paste(Dat1$member_name[Dat1$member_number == membernumber][1], " - Strategy: ", Strategy, " - Deductible: $", format(Deductible, big.mark = ",",scientific =F), sep ="")) %>%
-      dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
-                  highlightSeriesBackgroundAlpha = 0.2,
-                  hideOnMouseOut = T) %>%
-      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = sim_colors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
-      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = sim_colors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
-      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = sim_colors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
-      dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
-      dyLimit(0.6, color = "black") %>%
-      dyAxis("y", label = "Loss Ratio") %>%
-      dyAxis("x", label = "Policy Year") %>%
-      dyLegend(width = 300, hideOnMouseOut = T)
+  simdata <- simdata %>%
+    mutate(across(-Year, as.numeric))
+  
+  df_long <- simdata %>%
+    pivot_longer(
+      cols = matches("^(I_|F_|T_|Avg)"),
+      names_to = "series",
+      values_to = "value"
+    ) %>%
+    mutate(
+      group = case_when(
+        grepl("^I_", series)  ~ "Inception Simulations",
+        grepl("^F_", series)  ~ "5-Year Simulations",
+        grepl("^T_", series)  ~ "10-Year Simulations",
+        series == "AvgI"      ~ "Avg Inception LR",
+        series == "Avg5"      ~ "Avg 5-Year LR",
+        series == "Avg10"     ~ "Avg 10-Year LR"
+      ),
+      type = ifelse(grepl("^Avg", series), "avg", "sim")
+    ) %>%
+    filter(!is.na(group))
+  
+  
+  p <- ggplot() +
     
-  }
-  
-  # Genearate a graph that displays the entered deductible for the Avg LR's for the 
-  # scenarios of the selected strategy above.
-  else {
-    simdata %>%
-      dygraph(main = paste(Dat1$member_name[Dat1$member_number == membernumber][1], " - Strategy: ", Strategy, " - Deductible: First Dollar Coverage", sep ="")) %>%
-      dyHighlight(highlightSeriesOpts = list(strokeWidth = 4),
-                  highlightSeriesBackgroundAlpha = 0.2,
-                  hideOnMouseOut = T) %>%
-      dySeries(c("MinsI","MeansI","MaxsI"), strokeWidth = 4, color = sim_colors[1], label = "Avg LR's - Based on Inception Loss Ratio")%>%
-      dySeries(c("Mins5","Means5","Maxs5"), strokeWidth = 4, color = sim_colors[2], label = "Avg LR's - Based on Five year Loss Ratio")%>% 
-      dySeries(c("Mins10","Means10","Maxs10"), strokeWidth = 4, color = sim_colors[4], label = "Avg LR's - Based on Ten year Loss Ratio")%>%
-      dyShading(from = 0.6, to = 100, color = "#FAF1DF", axis = "y") %>%
-      dyLimit(0.6, color = "black") %>%
-      dyAxis("y", label = "Loss Ratio") %>%
-      dyAxis("x", label = "Policy Year") %>%
-      dyLegend(width = 300,hideOnMouseOut = T)
+    # Simulation paths (thin, semi-transparent)
+    geom_line(
+      data = filter(df_long, type == "sim"),
+      aes(
+        x = Year,
+        y = value,
+        group = series,
+        color = group
+      ),
+      linewidth = 0.6
+    ) +
     
-  }
+    # Average lines (bold)
+    geom_line(
+      data = filter(df_long, type == "avg"),
+      aes(
+        x = Year,
+        y = value,
+        color = group
+      ),
+      linewidth = 1.4
+    ) +
+    
+    # Reference line at 0.6
+    geom_hline(yintercept = 0.6, color = "black", linewidth = 0.4, linetype = "dashed") +
+    
+    scale_color_manual(
+      values = c(
+        "Inception Simulations" = sim_plot_colors[1],
+        "5-Year Simulations"   = sim_plot_colors[2],
+        "10-Year Simulations"  = sim_plot_colors[3],
+        "Avg Inception LR"     = sim_plot_colors[4],
+        "Avg 5-Year LR"        = sim_plot_colors[5],
+        "Avg 10-Year LR"       = sim_plot_colors[6]
+      )
+    ) +
+    
+    labs(
+      title = title,
+      x = "Policy Year",
+      y = "Loss Ratio",
+      color = NULL
+    ) +
+    scale_y_continuous(
+      limits = c(0, 1.5),
+      breaks = seq(0, 1.5, 0.1)
+    )+
+    theme_bw(base_size = 13) +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
   
+  # ------------------------------------------------------------
+  # Convert to plotly
+  # ------------------------------------------------------------
+  ggplotly(
+    p,
+    tooltip = c("x", "y")
+  ) %>%
+    config(
+      displayModeBar = FALSE
+    ) %>%
+    layout(
+      legend = list(
+        orientation = "v",
+        itemclick = "toggle",
+        itemdoubleclick = "toggleothers"
+        ),
+      xaxis = list(
+        range = c(min(df_long$Year), max(df_long$Year))
+        #labels = df_long$PolicyYear
+        )
+      )
+    
+ 
 }
 
-###############################################3
-# New GL Model Loss Sim
+#GenSimPlot(simdata, lrdata, 25000, 1001)
 
-
-SimLossIQ <- function(loss_dat,prem_dat, Member_number, deduct) {
-  
-  memberLosses <- loss_dat %>% clean_names()%>% filter(member_code == Member_number) %>%
-    mutate(accident_date = year(accident_date)) %>% 
-    filter(accident_date > year(Sys.Date())-5) 
-  
-  claims <- LossesAssesment(loss_dat,prem_dat, Member_number, "FreqTable")%>% 
-    filter(Policy_Year > year(Sys.Date())-5)
-  
-  n <- 1000
-  x<- rep(0,n)
-  y<-list()
-  y3 <- rep(0,n)
-  nb_size <- 10  
-  
-  for(i in 1:n){
-    x[i] <- rnbinom(1, mu = mean(claims$first_dollar_coverage), size = nb_size)
-    y[[i]]<- if(x[i] == 0) {0} else {(rexp(x[i], rate = 1/mean(memberLosses$incurred_dollars))-deduct) %>% replace(.<0,0) %>% sum() %>% round(0)}
-    y3[i] <- y[[i]]
-  }
-  quantile(y3, c(0.5,0.75,1))
-}
-
-# SimLossIQ(ecarm,prem_dat, 13310, 0)

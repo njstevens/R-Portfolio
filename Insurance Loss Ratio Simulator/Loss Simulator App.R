@@ -3,6 +3,8 @@ library(shinycssloaders)
 library(shinydashboard)
 library(shinyWidgets)
 library(shinythemes)
+library(zoo)
+library(bslib)
 # This sets the working directory to wherever app.R lives
 tryCatch({
   # Case 1: Interactive session in RStudio
@@ -29,6 +31,13 @@ source(file.path(app_dir, "generated_data_for_loss_simulation.R"))
 # Define UI for application that draws a histogram
 ui <- fluidPage(
   useShinydashboard(),
+  tags$head(
+    tags$style(HTML("
+    input[type='radio'] {
+      accent-color: #337ab7;
+    }
+  "))
+  ),
   tags$style(HTML('#clicks{border-color: #000; background-color: #000; color: #FFFFFF }')),
   tags$style(HTML('#Deductible{border-color: #000;}')),
   tags$style(HTML('#MemberNum{border-color: #000;}')),
@@ -38,12 +47,19 @@ ui <- fluidPage(
   tags$style(HTML('#str{color: #000; font-family:Verdana; font-weight: bold;}')),
   tags$style(HTML('#adj{color: #000; font-family:Verdana; font-weight: bold;}')),
   tags$style(HTML("
+    .radio-inline {
+      white-space: nowrap;
+      margin-right: 20px;
+    }
+  ")),
+  tags$style(HTML("
   #app-header {
     display: flex;
     align-items: center;
     gap: 20px;            /* <-- FIXED separation */
     padding-left: 10px;
   }
+  
 
   #app-logo {
     height: 80px;
@@ -51,10 +67,11 @@ ui <- fluidPage(
   }
   
     #title {
-    font-family: 'Times New Roman', Times, serif;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
   }
   
-  .dygraph-wrapper {
+.dygraph-wrapper {
   width: 100%;
   overflow: hidden;
 }
@@ -64,9 +81,11 @@ ui <- fluidPage(
   white-space: normal !important;
   word-break: break-word;
 }
+
 ")),
+
   
-  setBackgroundColor(color = c("#FFF","red","#000"), gradient = "linear", direction = "bottom"),
+  setBackgroundColor(color = c("#A9D7F6","#F1BC5F"), gradient = "linear", direction = "bottom"),
   titlePanel(
     div(
       id = "app-header",
@@ -74,38 +93,52 @@ ui <- fluidPage(
       #   src = "utah_logo.png",
       #   id = "app-logo"
       # ),
-      h1(id = "title", "General Liability Loss Simulator")
+     
+      h1(id = "title",
+         icon("project-diagram"), 
+         "General Liability Loss Simulator"
+         )
     )
   ),
   
   sidebarLayout(position = "left",
                 sidebarPanel(width = 4,
                              style = ("border-color:#000; border-width: 2px; background-color: #FFFFFF"),           
-                             numericInput("MemberNum", h6(id = "mem","Member Number"), value = premium_data$member_number[1]),  
+                             virtualSelectInput("MemberNum",
+                                          h6(id = "mem","Member Number"), 
+                                          choices = premium_data$member_number,
+                                          selected = premium_data$member_number[1],
+                                          search = TRUE
+                                          ),  
                              numericInput("Deductible", h6(id = "ded","Deductible"), value = NULL),
                              
-                             selectInput("Strategy", h6(id = "str","Select Strategy"),
-                                         choices = list("- Select a Strategy -","Organic_LR", 
-                                                        "Organic_Heavy_LR", 
-                                                        "Moderate_Aggressive_LR", 
-                                                        "Aggressive_LR", 
-                                                        "Extreme_LR")),
-                             helpText("Pricing Strategies: ",br(),
-                                      "Organic - 3% increase every year",br(),
-                                      "Organic Heavy - 5% increase every year",br(),
-                                      "Moderate Aggressive - 15% Increase now 5% after",br(),
-                                      "Aggressive - 30% Increase now 5% after",br(),
-                                      "Extreme - 50% Increase now 5% increase after"),
+                             # selectInput("Strategy", h6(id = "str","Select Strategy"),
+                             #             choices = list("- Select a Strategy -","Organic_LR", 
+                             #                            "Organic_Heavy_LR", 
+                             #                            "Moderate_Aggressive_LR", 
+                             #                            "Aggressive_LR", 
+                             #                            "Extreme_LR")),
+                             # helpText("Pricing Strategies: ",br(),
+                             #          "Organic - 3% increase every year",br(),
+                             #          "Organic Heavy - 5% increase every year",br(),
+                             #          "Moderate Aggressive - 15% Increase now 5% after",br(),
+                             #          "Aggressive - 30% Increase now 5% after",br(),
+                             #          "Extreme - 50% Increase now 5% increase after"),
+                             # 
                              
+                             radioButtons("Adjuster", 
+                                          h6(id = "adj",
+                                             "Loss Severity Adjuster"), 
+                                         choices = list(
+                                           "No Adjustment" = 1,
+                                           "0.5x Worse" = 1.5,
+                                           "2x Worse" = 2
+                                         ),
+                                         selected = 1,
+                                         inline = TRUE
+                                         ),
                              
-                             sliderInput("Adjuster", h6(id = "adj","Loss Severity Adjuster"), 
-                                
-                                         min = -3, max = 1, value = -1, step = 0.1),
-                             
-                             helpText("To INCREASE Loss Severity, move NEGATIVE.",
-                                      "To REDUCE Loss Severity Move POSITIVE.", br(),
-                                      "Note: When slider is set to 1, this means all losses will be reduced $0.",
-                                      "Adjuster defaults to making Loss Severity 2x's worse"),
+                             helpText("Manually adjust loss severity for extreme scenario simulation"),
                              
                              actionButton("clicks", "Run Simulator")),
                 
@@ -140,7 +173,7 @@ ui <- fluidPage(
                     box(
                       div(
                         class = "dygraph-wrapper",
-                        dygraphOutput("Simulator") %>% withSpinner(color = "#000", type = 6)
+                        plotlyOutput("Simulator") %>% withSpinner(color = "#000", type = 6)
                       ),
                       title = "Simulated Loss Ratios",
                       width = 15
@@ -153,6 +186,7 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+
   
   output$sev_assess <- renderDygraph({
     LossesAssesment(loss_data,premium_data,input$MemberNum,output = "Severity")
@@ -162,11 +196,30 @@ server <- function(input, output) {
     LossesAssesment(loss_data,premium_data,input$MemberNum,output = "Frequency")
   })
   
-  RunSim <- eventReactive(input$clicks, {run_200Scenarios(premium_data,loss_data,input$MemberNum, input$Deductible, input$Adjuster, input$Strategy)})
-  
-  output$Simulator <- renderDygraph({
-    GenSimPlot(RunSim(),premium_data,input$Deductible,input$MemberNum,input$Strategy)
+  RunSim <- eventReactive(input$clicks, {
+
+        run_simulations(
+          LRData        = premium_data,
+          losses        = loss_data,
+          membernumber  = input$MemberNum,
+          Deductible    = as.numeric(input$Deductible),
+          Loss_Adjuster = as.numeric(input$Adjuster),
+          n_sims        = 200,
+          n_show        = 20
+        )
+     
   })
+
+
+  output$Simulator <- renderPlotly({
+    GenSimPlot(RunSim(),
+               premium_data,
+               input$Deductible,
+               input$MemberNum
+               )
+  })
+
+  
   
 }
 # Run the application 
