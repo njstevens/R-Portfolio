@@ -112,18 +112,17 @@ ui <- fluidPage(
                                           ),  
                              numericInput("Deductible", h6(id = "ded","Deductible"), value = NULL),
                              
-                             # selectInput("Strategy", h6(id = "str","Select Strategy"),
-                             #             choices = list("- Select a Strategy -","Organic_LR", 
-                             #                            "Organic_Heavy_LR", 
-                             #                            "Moderate_Aggressive_LR", 
-                             #                            "Aggressive_LR", 
-                             #                            "Extreme_LR")),
-                             # helpText("Pricing Strategies: ",br(),
-                             #          "Organic - 3% increase every year",br(),
-                             #          "Organic Heavy - 5% increase every year",br(),
-                             #          "Moderate Aggressive - 15% Increase now 5% after",br(),
-                             #          "Aggressive - 30% Increase now 5% after",br(),
-                             #          "Extreme - 50% Increase now 5% increase after"),
+                             radioButtons("Strategy", h6(id = "str","Select Strategy"),
+                                         choices = list("Low Risk",
+                                                        "Standard",
+                                                        "High Risk"),
+                                         inline = TRUE,
+                                         selected = "Standard"),
+                             helpText("Pricing Strategies: ",br(),
+                                      "Low Risk - Focuses on a heavier pricing decrease for improved losses, only keeps high increases for severe increases in loss frequency Rewards lower loss ratios more heavily as well",br(),
+                                      "Standard - geared to lower loss ratios without unreasonable increases in premiums",br(),
+                                      "High Risk - Very little reward for improved loss frequency, bigger increases."
+                                      ),
                              # 
                              
                              radioButtons("Adjuster", 
@@ -173,7 +172,7 @@ ui <- fluidPage(
                     box(
                       div(
                         class = "dygraph-wrapper",
-                        plotlyOutput("Simulator") %>% withSpinner(color = "#000", type = 6)
+                        plotlyOutput("Simulator", height = "60vh") %>% withSpinner(color = "#000", type = 6)
                       ),
                       title = "Simulated Loss Ratios",
                       width = 15
@@ -205,7 +204,8 @@ server <- function(input, output) {
           Deductible    = as.numeric(input$Deductible),
           Loss_Adjuster = as.numeric(input$Adjuster),
           n_sims        = 200,
-          n_show        = 20
+          n_show        = 20,
+          prc_strat = input$Strategy
         )
      
   })
@@ -215,7 +215,8 @@ server <- function(input, output) {
     GenSimPlot(RunSim(),
                premium_data,
                input$Deductible,
-               input$MemberNum
+               input$MemberNum,
+               input$Strategy
                )
   })
 

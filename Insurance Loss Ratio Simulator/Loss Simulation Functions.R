@@ -223,7 +223,8 @@ simLosses <- function(PremData,
                       LossAdjuster = 1, 
                       TblOutput = c("LR", "Premiums","TotalPremVLosses"),
                       n_years = 50,
-                      window = 3) {
+                      window = 3,
+                      pricing_strategy) {
   
   #-------------------------------
   # Select the appropriate data
@@ -231,6 +232,7 @@ simLosses <- function(PremData,
   PremData <- PremData %>% clean_names() %>% filter(product == "Liability", member_number == MemberNumber)
   LossData <- LossData %>% clean_names() %>% filter(member_number == MemberNumber)
   
+  pr_strctr <- pricing_strategy
   
   base_deductible <- as.numeric(base_deductible)
   
@@ -288,20 +290,60 @@ simLosses <- function(PremData,
   #-------------------------------
   # Helper: dynamic pricing decision
   #-------------------------------
-  pricing_decision <- function(prev_prem, freq_trend, lr){
+  pricing_decision <- function(prev_prem, freq_trend, lr, pricing_structure){
     rate_change <- 0
+    
+    ## Standard pricing structure, geared to lower loss ratios without unreasonable increases
+    if(pricing_structure == "Standard"){
     if(!is.na(freq_trend)){
       if(freq_trend <= -0.30) rate_change <- -0.05   # good experience → small reduction
       else if(freq_trend > -0.30 & freq_trend <= 0) rate_change <- 0  # hold flat
       else if(freq_trend > 0 & freq_trend <= 0.1) rate_change <- 0.03
       else if(freq_trend > 0.10 & freq_trend <= 0.2) rate_change <- 0.05# worsening → increase
-      else if( freq_trend > 0.2) rate_change <- 0.8
+      else if( freq_trend > 0.2) rate_change <- 0.08
     }
     if(!is.na(lr)){
       if(lr > 0.75) rate_change <- rate_change + 0.05
       if(lr < 0.55) rate_change <- rate_change - 0.05
     }
     prev_prem * (1 + rate_change)
+    
+    }
+    
+    ## High Risk Pricing Option - Very little reward for improved loss frequency, bigger increases.
+    else if(pricing_structure == "High Risk"){
+      if(!is.na(freq_trend)){
+        if(freq_trend <= -0.40) rate_change <- -0.03   # good experience → small reduction
+        else if(freq_trend > -0.40 & freq_trend <= 0) rate_change <- 0  # hold flat
+        else if(freq_trend > 0 & freq_trend <= 0.1) rate_change <- 0.05
+        else if(freq_trend > 0.10 & freq_trend <= 0.15) rate_change <- 0.08# worsening → increase
+        else if( freq_trend > 0.15) rate_change <- 0.12
+      }
+      if(!is.na(lr)){
+        if(lr > 0.75) rate_change <- rate_change + 0.07
+        if(lr < 0.55) rate_change <- rate_change 
+      }
+      prev_prem * (1 + rate_change)
+      
+    }
+    
+    ## Low Risk Pricing Option - Focuses on a heavier pricing decrease for improved losses, only keeps high increases for severe increases in loss frequency
+    ## Rewards lower loss ratios more heavily as well
+    else if(pricing_structure == "Low Risk"){
+      if(!is.na(freq_trend)){
+        if(freq_trend <= -0.30) rate_change <- -0.08   # good experience → small reduction
+        else if(freq_trend > -0.30 & freq_trend <= 0.1) rate_change <- 0  # hold flat
+        else if(freq_trend > 0.1 & freq_trend <= 0.2) rate_change <- 0.03
+        else if(freq_trend > 0.2 & freq_trend <= 0.4) rate_change <- 0.05# worsening → increase
+        else if( freq_trend > 0.4) rate_change <- 0.12
+      }
+      if(!is.na(lr)){
+        if(lr > 0.75) rate_change <- rate_change + 0.05
+        if(lr < 0.55) rate_change <- rate_change - 0.07
+      }
+      prev_prem * (1 + rate_change)
+      
+    }
   }
   
   #-------------------------------
@@ -331,7 +373,7 @@ simLosses <- function(PremData,
       lr <- Total_Incurred_Losses[i-1] / EarnedPrem[i-1]
       
       # update premium
-      CurrPrem[i] <- pricing_decision(CurrPrem[i-1], freq_trend, lr)
+      CurrPrem[i] <- pricing_decision(CurrPrem[i-1], freq_trend, lr, pr_strctr)
       
       # update deductible if experience improved
       if(!is.na(freq_trend) && freq_trend <= -0.20){
@@ -388,8 +430,11 @@ run_simulations <- function(
     Deductible = 0,
     Loss_Adjuster = 0,
     n_sims = 200,
-    n_show = 20
+    n_show = 20,
+    prc_strat
 ) {
+  
+  pr_strat <- prc_strat
   
   # --- Years ---------------------------------------------------
   start_year <- LRData %>%
@@ -415,7 +460,8 @@ run_simulations <- function(
                 MemberNumber = membernumber,
                 base_deductible = Deductible,
                 LossAdjuster = Loss_Adjuster,
-                TblOutput = "FullTable"
+                TblOutput = "FullTable",
+                pricing_strategy = pr_strat
                 ),
               simplify = FALSE
       )
@@ -500,17 +546,21 @@ run_simulations <- function(
 #  lrdata <- premium_data
 #  simdata <- Sim_Dat
 
-GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
+GenSimPlot <- function(simdata, lrdata, Deductible, membernumber, Strategy) {
   
 
-   sims <- simdata[[1]] 
-   avgs <-  simdata[[2]]
+   sims <- simdata[[1]] %>% mutate(
+     Term = factor(Term, levels = c("Inception", "Ten", "Five"))
+   )
+   avgs <-  simdata[[2]] %>% mutate(
+     Term = factor(Term, levels = c("Inception", "Ten", "Five"))
+   )
   
   
   Dat1 <- lrdata %>% clean_names()
   title <- paste0(
     Dat1$member[Dat1$member_number == membernumber][1],
-    " - Experience Based Pricing",
+    " - ",Strategy," Pricing",
     ifelse(Deductible > 0,
            paste0(" - Starting Deductible: $", format(Deductible, big.mark = ",")),
            " - Deductible: First Dollar Coverage")
@@ -583,7 +633,7 @@ GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
     
     theme_bw(base_size = 13) +
     theme(
-      legend.position = "right",
+      legend.position = "bottom",
       plot.title = element_text(face = "bold"),
       panel.grid.minor = element_blank()
     )
@@ -597,8 +647,9 @@ GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
   ) %>%
     config(displayModeBar = FALSE) %>%
     layout(
+      hovermode = "x unified",
       legend = list(
-        orientation = "v",
+        orientation = "h",
         itemclick = "toggle",
         itemdoubleclick = "toggleothers"
       ),
