@@ -19,9 +19,9 @@ sim_colors <- c("#1b2fc4",
                 "#691cad")
 
 sim_plot_colors <- c(
-  "#f5a53d",
-  "#8dcbf0",
-  "#42f56f",
+  "#e67d05",
+  "#53a1cf",
+  "#339900",
   "#b86a06",
   "#53a1cf",
   "#2f9147"
@@ -32,41 +32,6 @@ sim_plot_colors <- c(
 ##########################################################################
 # Import data from loss_dat.  Ensure ULGTACCT Code, ULGTACCT, Accident Date, Policy Effective Date and Incurred Dollars are present.  This is also used in the simulation process functions below.set.seed(123)
 
-
-# 
-# 
-# n_members <- 10
-# 
-# prem_dat <- tibble(
-#   member_number = 1001:(1000 + n_members),
-#   product = "Liability",
-#   five_year_earned_premium = round(runif(n_members, 2e6, 5e6),0),
-#   five_year_incurred = round(runif(n_members, 1e6, 4e6),0),
-#   ten_year_earned_premium = round(runif(n_members, 4e6, 1e7),0),
-#   ten_year_incurred = round(runif(n_members, 2e6, 8e6),0),
-#   inception_earned_premium = round(runif(n_members, 5e6, 2e7),0),
-#   inception_incurred = round(runif(n_members, 3e6, 1.5e7),0),
-#   current_policy_annual_premium = round(runif(n_members, 5e5, 1.5e6),0),
-#   current_policy_effective_date = sample(seq(ymd("2010-01-01"), ymd("2020-12-31"), by="year"), n_members, replace=TRUE)
-# )
-# 
-# 
-# 
-# set.seed(456)
-# 
-# # pick ~2000 claims total
-# n_claims <- 2000
-# member_ids <- sample(trustData$member_number, n_claims, replace=TRUE)
-# 
-# ecarm <- tibble(
-#   member_number = member_ids,
-#   member = paste("Member", member_ids),
-#   accident_date = sample(seq(ymd("2005-01-01"), ymd("2020-12-31"), by="day"), n_claims, replace=TRUE),
-#   policy_effective_date = sample(seq(ymd("2000-01-01"), ymd("2020-12-31"), by="year"), n_claims, replace=TRUE),
-#   incurred_dollars = round(rexp(n_claims, rate=1/25000),0) # mean ~25k losses
-# )
-# 
-# 
 
 LossesAssesment <- function(loss_dat,prem_dat,membernumber, output = c("Frequency","Severity", "FreqTable", "SevTable")){
   
@@ -326,9 +291,11 @@ simLosses <- function(PremData,
   pricing_decision <- function(prev_prem, freq_trend, lr){
     rate_change <- 0
     if(!is.na(freq_trend)){
-      if(freq_trend <= -0.20) rate_change <- -0.05   # good experience → small reduction
-      else if(freq_trend <= -0.10) rate_change <- 0  # hold flat
-      else if(freq_trend >= 0.10) rate_change <- 0.05 # worsening → increase
+      if(freq_trend <= -0.30) rate_change <- -0.05   # good experience → small reduction
+      else if(freq_trend > -0.30 & freq_trend <= 0) rate_change <- 0  # hold flat
+      else if(freq_trend > 0 & freq_trend <= 0.1) rate_change <- 0.03
+      else if(freq_trend > 0.10 & freq_trend <= 0.2) rate_change <- 0.05# worsening → increase
+      else if( freq_trend > 0.2) rate_change <- 0.8
     }
     if(!is.na(lr)){
       if(lr > 0.75) rate_change <- rate_change + 0.05
@@ -414,6 +381,239 @@ simLosses <- function(PremData,
 #   TblOutput = "LR",
 #   n_years = 50,
 #   window = 5)
+
+
+run_simulations <- function(
+    LRData, losses, membernumber,
+    Deductible = 0,
+    Loss_Adjuster = 0,
+    n_sims = 200,
+    n_show = 20
+) {
+  
+  # --- Years ---------------------------------------------------
+  start_year <- LRData %>%
+    clean_names() %>%
+    filter(product == "Liability",
+           member_number == membernumber) %>%
+    pull(current_policy_effective_date) %>%
+    min() %>%
+    lubridate::year()
+  
+  years <- start_year:(start_year + 49)
+  
+  # --- Helper to run sims ------------------------------------
+  
+
+  run_term <- function(term) {
+    sims <- replicate(
+              n_sims,
+              simLosses(
+                PremData = LRData,
+                LossData = losses,
+                LRTerm = term,
+                MemberNumber = membernumber,
+                base_deductible = Deductible,
+                LossAdjuster = Loss_Adjuster,
+                TblOutput = "FullTable"
+                ),
+              simplify = FALSE
+      )
+    
+     bind_rows(sims, .id = "sim_id") %>%
+       mutate(sim_id = as.integer(sim_id))
+    }
+  
+  
+  
+  SimI_all  <- run_term("Inception")
+  Sim5_all  <- run_term("Five")
+  Sim10_all <- run_term("Ten")
+  
+  # --- Averages -----------------------------------------------
+  
+  avg_term <- function(df){
+    df %>%
+      group_by(
+        Year
+      ) %>%
+      summarise(
+        Avg_LR = mean(Loss_Ratio, na.rm = TRUE),
+        Avg_Premium = mean(Premium, na.rm = TRUE),
+        Avg_Deductible = mean(Deductible, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  AvgI  <- avg_term(SimI_all)
+  Avg5  <- avg_term(Sim5_all)
+  Avg10 <- avg_term(Sim10_all)
+  
+  # --- Randomly select 20 full paths --------------------------
+  keep <- sample(seq_len(n_sims), n_show)
+  
+  SimI <- SimI_all %>% filter(sim_id %in% keep)
+  Sim5 <- Sim5_all %>% filter(sim_id %in% keep)
+  Sim10 <- Sim10_all %>% filter(sim_id %in% keep)
+  
+
+  
+  # --- Final dataframe ----------------------------------------
+  out <- tibble(
+    Year = years,
+    AvgI = AvgI,
+    Avg5 = Avg5,
+    Avg10 = Avg10
+  )
+  
+  # add individual simulation paths
+  avgs <- bind_rows(
+    AvgI %>% mutate(Term = "Inception"),
+    Avg5 %>% mutate(Term = "Five"),
+    Avg10 %>% mutate(Term = "Ten"),
+  )
+  
+  sims_20 <- bind_rows(
+    SimI %>% mutate(Term = "Inception"),
+    Sim5 %>% mutate(Term = "Five"),
+    Sim10 %>% mutate(Term = "Ten"),
+  )
+  
+  list(
+    sims_20,
+    avgs
+  )
+}
+
+### TEST CODE
+# 
+# Sim_Dat <-run_simulations(
+#     premium_data, loss_data, 1002,
+#     Deductible = 10000,
+#     Loss_Adjuster = 1,
+#     n_sims = 200,
+#     n_show = 20
+# )
+# 
+# # 
+#  membernumber <- 1002
+#  Deductible <- 10000
+#  lrdata <- premium_data
+#  simdata <- Sim_Dat
+
+GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
+  
+
+   sims <- simdata[[1]] 
+   avgs <-  simdata[[2]]
+  
+  
+  Dat1 <- lrdata %>% clean_names()
+  title <- paste0(
+    Dat1$member[Dat1$member_number == membernumber][1],
+    " - Experience Based Pricing",
+    ifelse(Deductible > 0,
+           paste0(" - Starting Deductible: $", format(Deductible, big.mark = ",")),
+           " - Deductible: First Dollar Coverage")
+  )
+
+  
+  
+  p <- ggplot() +
+    
+    #--- Simulation paths ---
+    geom_line(
+      data = sims,
+      aes(
+        x = Year,
+        y = Loss_Ratio,
+        group = interaction(Term, sim_id),
+        color = Term
+      ),
+      linewidth = 0.6,
+      alpha = 0.25
+    ) +
+    
+    # --- Average lines ---
+    geom_line(
+      data = avgs,
+      aes(
+        x = Year,
+        y = Avg_LR,
+        group = Term,
+        color = Term,
+        text = paste0(
+          "Term: ", Term,
+          "<br>Year: ", Year,
+          "<br>Avg Loss Ratio: ", round(Avg_LR, 2),
+          "<br>Avg Premium: $", scales::comma(round(Avg_Premium)),
+          "<br>Avg Deductible: $", scales::comma(round(Avg_Deductible))
+        )
+      ),
+      linewidth = 1.6
+    ) +
+    
+    # --- Reference line ---
+    geom_hline(
+      yintercept = 0.6,
+      linetype = "dashed",
+      linewidth = 0.4,
+      color = "black"
+    ) +
+    
+    # --- Styling ---
+    scale_color_manual(
+      values = c(
+        "Inception" = sim_plot_colors[1],
+        "Five"      = sim_plot_colors[2],
+        "Ten"       = sim_plot_colors[3]
+      )
+    ) +
+    
+    labs(
+      title = title,
+      x = "Policy Year",
+      y = "Loss Ratio",
+      color = NULL
+    ) +
+    
+    scale_y_continuous(
+      limits = c(0, 1.5),
+      breaks = seq(0, 1.5, 0.1)
+    ) +
+    
+    theme_bw(base_size = 13) +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+  
+  # ------------------------------------------------------------
+  # Convert to plotly
+  # ------------------------------------------------------------
+  ggplotly(
+    p,
+    tooltip = "text"
+  ) %>%
+    config(displayModeBar = FALSE) %>%
+    layout(
+      legend = list(
+        orientation = "v",
+        itemclick = "toggle",
+        itemdoubleclick = "toggleothers"
+      ),
+      xaxis = list(
+        range = c(min(sims$Year), max(sims$Year))
+      )
+    )
+ 
+}
+
+#GenSimPlot(simdata, lrdata, 25000, 1001)
+
+
+## OLD SIMULATION CODE ###
+
 
 ##### OLD SIM LOSSES ################
 #####################################
@@ -688,210 +888,4 @@ simLosses <- function(PremData,
 
 
 #############################
-
-run_simulations <- function(
-    LRData, losses, membernumber,
-    Deductible = 0,
-    Loss_Adjuster = 0,
-    n_sims = 200,
-    n_show = 20
-) {
-  
-  # --- Years ---------------------------------------------------
-  start_year <- LRData %>%
-    clean_names() %>%
-    filter(product == "Liability",
-           member_number == membernumber) %>%
-    pull(current_policy_effective_date) %>%
-    min() %>%
-    lubridate::year()
-  
-  years <- start_year:(start_year + 49)
-  
-  # --- Helper to run sims ------------------------------------
-  
-
-  run_term <- function(term) {
-      replicate(
-              n_sims,
-              simLosses(
-                PremData = LRData,
-                LossData = losses,
-                LRTerm = term,
-                MemberNumber = membernumber,
-                base_deductible = Deductible,
-                LossAdjuster = Loss_Adjuster,
-                TblOutput = "LR"
-                ) %>% pull(Loss_Ratio)
-      )
-    }
-  
-  
-  
-  SimI_all  <- run_term("Inception")
-  Sim5_all  <- run_term("Five")
-  Sim10_all <- run_term("Ten")
-  
-  # --- Averages -----------------------------------------------
-  AvgI  <- rowMeans(SimI_all)
-  Avg5  <- rowMeans(Sim5_all)
-  Avg10 <- rowMeans(Sim10_all)
-  
-  # --- Randomly select 20 full paths --------------------------
-  keep <- sample(seq_len(n_sims), n_show)
-  
-  SimI  <- SimI_all[, keep, drop = FALSE]
-  Sim5  <- Sim5_all[, keep, drop = FALSE]
-  Sim10 <- Sim10_all[, keep, drop = FALSE]
-  
-
-  
-  # --- Final dataframe ----------------------------------------
-  out <- tibble(
-    Year = years,
-    AvgI = AvgI,
-    Avg5 = Avg5,
-    Avg10 = Avg10
-  )
-  
-  # add individual simulation paths
-  for (i in seq_len(n_show)) {
-    out[[paste0("I_", i)]]  <- SimI[, i]
-    out[[paste0("F_", i)]]  <- Sim5[, i]
-    out[[paste0("T_", i)]]  <- Sim10[, i]
-  }
-  
-  out
-}
-
-### TEST CODE
-# 
-# Sim_Dat <-run_simulations(
-#     premium_data, loss_data, 1002,
-#     Deductible = 10000,
-#     Loss_Adjuster = 1,
-#     n_sims = 200,
-#     n_show = 20
-# )
-# 
-# 
-# lrdata <- premium_data
-# simdata <- Sim_Dat
-
-GenSimPlot <- function(simdata, lrdata, Deductible, membernumber) {
-  
-  Dat1 <- lrdata %>% clean_names()
-  title <- paste0(
-    Dat1$member[Dat1$member_number == membernumber][1],
-    " - Experience Based Pricing",
-    ifelse(Deductible > 0,
-           paste0(" - Starting Deductible: $", format(Deductible, big.mark = ",")),
-           " - Deductible: First Dollar Coverage")
-  )
-  
-  simdata <- simdata %>%
-    mutate(across(-Year, as.numeric))
-  
-  df_long <- simdata %>%
-    pivot_longer(
-      cols = matches("^(I_|F_|T_|Avg)"),
-      names_to = "series",
-      values_to = "value"
-    ) %>%
-    mutate(
-      group = case_when(
-        grepl("^I_", series)  ~ "Inception Simulations",
-        grepl("^F_", series)  ~ "5-Year Simulations",
-        grepl("^T_", series)  ~ "10-Year Simulations",
-        series == "AvgI"      ~ "Avg Inception LR",
-        series == "Avg5"      ~ "Avg 5-Year LR",
-        series == "Avg10"     ~ "Avg 10-Year LR"
-      ),
-      type = ifelse(grepl("^Avg", series), "avg", "sim")
-    ) %>%
-    filter(!is.na(group))
-  
-  
-  p <- ggplot() +
-    
-    # Simulation paths (thin, semi-transparent)
-    geom_line(
-      data = filter(df_long, type == "sim"),
-      aes(
-        x = Year,
-        y = value,
-        group = series,
-        color = group
-      ),
-      linewidth = 0.6
-    ) +
-    
-    # Average lines (bold)
-    geom_line(
-      data = filter(df_long, type == "avg"),
-      aes(
-        x = Year,
-        y = value,
-        color = group
-      ),
-      linewidth = 1.4
-    ) +
-    
-    # Reference line at 0.6
-    geom_hline(yintercept = 0.6, color = "black", linewidth = 0.4, linetype = "dashed") +
-    
-    scale_color_manual(
-      values = c(
-        "Inception Simulations" = sim_plot_colors[1],
-        "5-Year Simulations"   = sim_plot_colors[2],
-        "10-Year Simulations"  = sim_plot_colors[3],
-        "Avg Inception LR"     = sim_plot_colors[4],
-        "Avg 5-Year LR"        = sim_plot_colors[5],
-        "Avg 10-Year LR"       = sim_plot_colors[6]
-      )
-    ) +
-    
-    labs(
-      title = title,
-      x = "Policy Year",
-      y = "Loss Ratio",
-      color = NULL
-    ) +
-    scale_y_continuous(
-      limits = c(0, 1.5),
-      breaks = seq(0, 1.5, 0.1)
-    )+
-    theme_bw(base_size = 13) +
-    theme(
-      legend.position = "right",
-      plot.title = element_text(face = "bold"),
-      panel.grid.minor = element_blank()
-    )
-  
-  # ------------------------------------------------------------
-  # Convert to plotly
-  # ------------------------------------------------------------
-  ggplotly(
-    p,
-    tooltip = c("x", "y")
-  ) %>%
-    config(
-      displayModeBar = FALSE
-    ) %>%
-    layout(
-      legend = list(
-        orientation = "v",
-        itemclick = "toggle",
-        itemdoubleclick = "toggleothers"
-        ),
-      xaxis = list(
-        range = c(min(df_long$Year), max(df_long$Year))
-        #labels = df_long$PolicyYear
-        )
-      )
-    
- 
-}
-
-#GenSimPlot(simdata, lrdata, 25000, 1001)
 
