@@ -84,8 +84,8 @@ ui <- fluidPage(
 
 ")),
 
-  
-  setBackgroundColor(color = c("#A9D7F6","#F1BC5F"), gradient = "linear", direction = "bottom"),
+  setBackgroundImage(src = "white_waves_opt.png"),
+  #setBackgroundColor(color = c("#A9D7F6","#F1BC5F"), gradient = "linear", direction = "bottom"),
   titlePanel(
     div(
       id = "app-header",
@@ -103,7 +103,10 @@ ui <- fluidPage(
   
   sidebarLayout(position = "left",
                 sidebarPanel(width = 4,
-                             style = ("border-color:#000; border-width: 2px; background-color: #FFFFFF"),           
+                             style = "background-color: rgba(255, 255, 255, 0.65);
+                             border: 2px solid rgba(0, 0, 0, 0.2);
+                             backdrop-filter: blur(2px);
+                             -webkit-backdrop-filter: blur(2px);",           
                              virtualSelectInput("MemberNum",
                                           h6(id = "mem","Member Number"), 
                                           choices = premium_data$member_number,
@@ -125,19 +128,10 @@ ui <- fluidPage(
                                       ),
                              # 
                              
-                             radioButtons("Adjuster", 
-                                          h6(id = "adj",
-                                             "Loss Severity Adjuster"), 
-                                         choices = list(
-                                           "No Adjustment" = 1,
-                                           "0.5x Worse" = 1.5,
-                                           "2x Worse" = 2
-                                         ),
-                                         selected = 1,
-                                         inline = TRUE
-                                         ),
+                             sliderInput("p_pareto", "Catastrophe Probability (per claim)",
+                                         min = 0, max = 0.10, value = 0.02, step = 0.001),
                              
-                             helpText("Manually adjust loss severity for extreme scenario simulation"),
+                             helpText("Manually adjust the probability of catastrophic loss"),
                              
                              actionButton("clicks", "Run Simulator")),
                 
@@ -166,7 +160,15 @@ ui <- fluidPage(
                       title = "Loss Assessment",
                       width = 15
                     ),
-                    tags$script(HTML("$('.box').eq(0).css('border', '2px solid #000');"))
+                    tags$script(HTML("
+                    $('.box').css({
+                    'background': 'rgba(255, 255, 255, 0.65)',
+                    'border': '2px solid rgba(0, 0, 0, 0.25)',
+                    'backdrop-filter': 'blur(2px)',
+                    '-webkit-backdrop-filter': 'blur(2px)',
+                    'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.2)'});
+                                     ")
+                    )
                   ),
                   fluidRow(
                     box(
@@ -177,8 +179,16 @@ ui <- fluidPage(
                       title = "Simulated Loss Ratios",
                       width = 15
                     ),
-                    tags$script(HTML("$('.box').eq(1).css({'border' : '2px solid #000'});"))
-                  ),
+                    tags$script(HTML("
+                    $('.box').css({
+                    'background': 'rgba(255, 255, 255, 0.65)',
+                    'border': '2px solid rgba(0, 0, 0, 0.25)',
+                    'backdrop-filter': 'blur(2px)',
+                    '-webkit-backdrop-filter': 'blur(2px)',
+                    'box-shadow': '0 8px 24px rgba(0, 0, 0, 0.2)'});
+                                     ")
+                                )
+                  )
                 )
               )
   )
@@ -202,7 +212,7 @@ server <- function(input, output) {
           losses        = loss_data,
           membernumber  = input$MemberNum,
           Deductible    = as.numeric(input$Deductible),
-          Loss_Adjuster = as.numeric(input$Adjuster),
+          p_pareto = as.numeric(input$p_pareto),
           n_sims        = 200,
           n_show        = 20,
           prc_strat = input$Strategy

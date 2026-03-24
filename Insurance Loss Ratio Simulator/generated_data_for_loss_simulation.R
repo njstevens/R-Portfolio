@@ -43,7 +43,8 @@ loss_data <- member_policy_dates %>%
     incurred_dollars = rlnorm(1, meanlog=9, sdlog=1) + ifelse(pareto_flag==1, rpareto1(1, scale=5e4, shape=1.5), 0)
   ) %>%
   ungroup() %>%
-  select(member_number, member, policy_effective_date, accident_date, incurred_dollars)
+  select(member_number, member, policy_effective_date, accident_date,pareto_flag, incurred_dollars)
+
 
 
 

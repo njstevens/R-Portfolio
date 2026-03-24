@@ -220,7 +220,7 @@ simLosses <- function(PremData,
                       LRTerm = c("Five","Ten","Inception"), 
                       MemberNumber, 
                       base_deductible = 0, 
-                      LossAdjuster = 1, 
+                      p_pareto, 
                       TblOutput = c("LR", "Premiums","TotalPremVLosses"),
                       n_years = 50,
                       window = 3,
@@ -232,11 +232,13 @@ simLosses <- function(PremData,
   PremData <- PremData %>% clean_names() %>% filter(product == "Liability", member_number == MemberNumber)
   LossData <- LossData %>% clean_names() %>% filter(member_number == MemberNumber)
   
+  # Probability of catastrophic loss
+  prob <- p_pareto
+  
   pr_strctr <- pricing_strategy
   
   base_deductible <- as.numeric(base_deductible)
   
-  LossAdjuster <- as.numeric(LossAdjuster)
   
   if (LRTerm == "Five") {
     earned_prem <- PremData$five_year_earned_premium
@@ -304,7 +306,7 @@ simLosses <- function(PremData,
     }
     if(!is.na(lr)){
       if(lr > 0.75) rate_change <- rate_change + 0.05
-      if(lr < 0.55) rate_change <- rate_change - 0.05
+      # if(lr < 0.55) rate_change <- rate_change - 0.05
     }
     prev_prem * (1 + rate_change)
     
@@ -349,39 +351,53 @@ simLosses <- function(PremData,
   #-------------------------------
   # Simulate yearly claims
   #-------------------------------
+  
+  # Helper function to set up sampling from pareto dist.
+  rpareto1 <- function(n, scale, shape) {
+    scale / (runif(n)^(1/shape))
+  }
+  
   nb_size <- 10
   for(i in 1:n_years){
     # number of claims
     Claims_Made[i] <- rnbinom(1, mu = mean(Claims$first_dollar_coverage), size = nb_size)
-    
+
     # simulate losses
     if(Claims_Made[i] == 0){
       Incurred_Losses[i] <- 0
     } else {
-      Incurred_Losses[i] <- sum(pmax(
-        rexp(Claims_Made[i], rate = 1/mean(MemberLosses$incurred_dollars)) * LossAdjuster - Deductible[i],
-        0
-      ))
+      
+      pareto_flag <- rbinom(Claims_Made[i], 1, prob)
+      
+      base_sev <- rexp(Claims_Made[i], rate = 1/mean(MemberLosses$incurred_dollars))
+      
+      pareto_add <- numeric(Claims_Made[i])
+      n_cat <- sum(pareto_flag == 1)
+      if(n_cat > 0){
+        pareto_add[pareto_flag == 1] <- rpareto1(n_cat, scale = 5e4, shape = 1.5)
+      }
+      
+      Incurred_Losses[i] <- sum(pmax(base_sev + pareto_add - Deductible[i], 0))
     }
-    
+
     # update total
     if(i == 1) Total_Incurred_Losses[i] <- incurred else Total_Incurred_Losses[i] <- Total_Incurred_Losses[i-1] + Incurred_Losses[i]
-    
+
     # compute experience
     if(i > 1){
       freq_trend <- ifelse(i > 1, (Claims_Made[i-1] - Claims_Made[i-2])/Claims_Made[i-2], 0)
       lr <- Total_Incurred_Losses[i-1] / EarnedPrem[i-1]
-      
+
       # update premium
       CurrPrem[i] <- pricing_decision(CurrPrem[i-1], freq_trend, lr, pr_strctr)
-      
+
       # update deductible if experience improved
       if(!is.na(freq_trend) && freq_trend <= -0.20){
         Deductible[i] <- max(Deductible[i-1] - 500, 0)
       } else {
         Deductible[i] <- Deductible[i-1]
       }
-      
+
       EarnedPrem[i] <- EarnedPrem[i-1] + CurrPrem[i]
     }
   }
@@ -414,21 +430,22 @@ simLosses <- function(PremData,
 }
 
 ### TEST CODE
-# term <-simLosses(premium_data,
-#   loss_data,
-#   LRTerm = "Inception",
-#   MemberNumber = 1001,
-#   base_deductible = 10000,
-#   LossAdjuster = 1,
-#   TblOutput = "LR",
-#   n_years = 50,
-#   window = 5)
+term <-simLosses(premium_data,
+  loss_data,
+  LRTerm = "Inception",
+  MemberNumber = 1001,
+  base_deductible = 10000,
+  p_pareto = 0.02,
+  TblOutput = "LR",
+  n_years = 50,
+  window = 5,
+  pricing_strategy = "Standard")
 
 
 run_simulations <- function(
     LRData, losses, membernumber,
     Deductible = 0,
-    Loss_Adjuster = 0,
+    p_pareto,
     n_sims = 200,
     n_show = 20,
     prc_strat
@@ -459,7 +476,7 @@ run_simulations <- function(
                 LRTerm = term,
                 MemberNumber = membernumber,
                 base_deductible = Deductible,
-                LossAdjuster = Loss_Adjuster,
+                p_pareto = p_pareto,
                 TblOutput = "FullTable",
                 pricing_strategy = pr_strat
                 ),
@@ -631,11 +648,16 @@ GenSimPlot <- function(simdata, lrdata, Deductible, membernumber, Strategy) {
       breaks = seq(0, 1.5, 0.1)
     ) +
     
-    theme_bw(base_size = 13) +
+    theme_minimal(base_size = 13) +
     theme(
-      legend.position = "bottom",
-      plot.title = element_text(face = "bold"),
-      panel.grid.minor = element_blank()
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background  = element_rect(fill = "transparent", color = NA),
+      
+      panel.grid.major = element_line(color = "rgba(0,0,0,0.15)", linewidth = 0.3),
+      panel.grid.minor = element_line(color = "rgba(0,0,0,0.05)", linewidth = 0.2),
+      
+      axis.text = element_text(color = "#222"),
+      axis.title = element_text(color = "#222")
     )
   
   # ------------------------------------------------------------
@@ -648,15 +670,18 @@ GenSimPlot <- function(simdata, lrdata, Deductible, membernumber, Strategy) {
     config(displayModeBar = FALSE) %>%
     layout(
       hovermode = "x unified",
-      legend = list(
+      plot_bgcolor  = "rgba(0,0,0,0)",
+      paper_bgcolor = "rgba(0,0,0,0)",
+     legend = list(
         orientation = "h",
         itemclick = "toggle",
         itemdoubleclick = "toggleothers"
       ),
       xaxis = list(
         range = c(min(sims$Year), max(sims$Year))
+        
       )
-    )
+    ) 
  
 }
 
